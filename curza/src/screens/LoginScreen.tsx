@@ -9,53 +9,57 @@ import {
   Image,
   ImageBackground,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native'; 
+import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 
 type RootStackParamList = {
   Login: undefined;
   SignUp: undefined;
-  // Add other routes here if needed
 };
 
 export default function SignUpScreen() {
   const [centre, setCentre] = useState(false);
-  const [terms, setTerms] = useState(false);
+  const [terms, setTerms] = useState(false); // kept for future use
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left navigation bar with text overlay */}
-        <Image
-          source={require('../../assets/logintab.png')}
-          style={s.logintab}
-          resizeMode="contain"
-        />
+        {/* LOG IN text (above the tab image) */}
         <View style={s.tabTextWrapper}>
           <Pressable
             onPress={() => navigation.navigate('Login')}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={[s.tabText, s.inactiveTab]}>LOG IN</Text>
+            <Text style={[s.tabText, s.activeTab]}>LOG IN</Text>
           </Pressable>
         </View>
 
         <Image
-        source={require('../../assets/curza-logo.png')}
-        style={s.cornerLogo}
-        resizeMode="contain"
+          source={require('../../assets/curza-logo.png')}
+          style={s.cornerLogo}
+          resizeMode="contain"
         />
 
-        {/*  Main background */}
+        {/* Left tab artwork */}
+        <Image
+          source={require('../../assets/Union.png')}
+          style={s.logintab}
+          resizeMode="contain"
+          // pointerEvents="none"
+        />
+
+        {/* Main background */}
         <ImageBackground
-          source={require('../../assets/signup.png')}
+          source={require('../../assets/Union-1.png')}
           style={s.card}
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
           <View style={s.tabTextWrapper}>
-            <Text style={[s.tabText, s.activeTab]}>SIGN UP</Text>
+            <Pressable onPress={() => navigation.navigate('SignUp')}>
+              <Text style={[s.tabText, s.inactiveTab]}>SIGN UP</Text>
+            </Pressable>
           </View>
 
           <View style={s.cardInner}>
@@ -73,21 +77,14 @@ export default function SignUpScreen() {
               />
 
               {/* Header */}
-              <Text style={s.heading}>CREATE YOUR CURZA ACCOUNT</Text>
+              <Text style={s.heading}>Welcome Back</Text>
               <Text style={s.sub}>
-                Set up your profile and start learning smarter, with tools {'\n'}built for your curriculum.
+                Pick up where you left off and keep building your learning {'\n'}journey.
               </Text>
 
               {/* Form */}
               <View style={s.grid}>
                 <View style={s.col}>
-                  <Text style={s.label}>Full Name</Text>
-                  <TextInput
-                    placeholder="Your Name & Surname"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
-
                   <Text style={s.label}>ID Number</Text>
                   <TextInput
                     placeholder="Your ID Number"
@@ -112,54 +109,21 @@ export default function SignUpScreen() {
                     secureTextEntry
                   />
 
-                  <Text style={s.label}>Curriculum</Text>
-                  <TextInput
-                    placeholder="CAPS"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
-
-                  <Text style={s.label}>Grade</Text>
-                  <TextInput
-                    placeholder="12"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
-                </View>
-
-                <View style={s.col}>
-                  <Text style={s.label}>Language</Text>
-                  <TextInput
-                    placeholder="English"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
-
-                  <Text style={s.label}>Subjects</Text>
-                  <TextInput
-                    placeholder="4 Selected"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
-
                   <Pressable style={s.checkRow} onPress={() => setCentre(v => !v)}>
                     <View style={[s.checkbox, centre && s.checkboxOn]} />
-                    <Text style={s.checkText}>I am using this at a learning centre.</Text>
-                  </Pressable>
-
-                  <Pressable style={s.checkRow} onPress={() => setTerms(v => !v)}>
-                    <View style={[s.checkbox, terms && s.checkboxOn]} />
-                    <Text style={s.checkText}>I agree to all terms & conditions.</Text>
+                    <Text style={s.checkText}>Remember me.</Text>
                   </Pressable>
 
                   <Pressable style={s.cta} onPress={() => { /* TODO: submit */ }}>
-                    <Text style={s.ctaText}>Create Account</Text>
+                    <Text style={s.ctaText}>Log In</Text>
                   </Pressable>
 
-                  <Text style={s.loginHint}>
-                    Already have an account? <Text style={s.loginLink}>Log in</Text>
+                  <Text style={s.signupHint}>
+                    Not registered? <Text style={s.signupLink}>Sign Up</Text>
                   </Text>
                 </View>
+
+                <View style={s.col} />
               </View>
             </ScrollView>
           </View>
@@ -169,7 +133,6 @@ export default function SignUpScreen() {
   );
 }
 
-const BLUE = '#2563EB';
 const INPUT = '#3B82F6';
 
 const s = StyleSheet.create({
@@ -179,7 +142,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   imageWrapper: {
     width: '94%',
     height: '95%',
@@ -190,7 +152,7 @@ const s = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
-    position: 'relative',         
+    position: 'relative',
   },
 
   // Sign Up / Log In text overlay
@@ -199,7 +161,8 @@ const s = StyleSheet.create({
     top: '22%',
     left: '4.5%',
     alignItems: 'center',
-    zIndex: 5,                    
+    zIndex: 5,
+    elevation: 5,
   },
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
@@ -210,14 +173,14 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  activeTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -65 },
-  inactiveTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 35 },
+  inactiveTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -65 },
+  activeTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 34 },
 
   logintab: {
     position: 'absolute',
     height: '100%',
     width: '100%',
-    zIndex: 1,                    
+    zIndex: 1,
   },
 
   card: {
@@ -225,9 +188,8 @@ const s = StyleSheet.create({
     borderRadius: 40,
     overflow: 'hidden',
     position: 'relative',
-    zIndex: 1,                    
+    zIndex: 1,
   },
-
   cardInner: {
     flex: 1,
     borderRadius: 40,
@@ -235,7 +197,6 @@ const s = StyleSheet.create({
     marginLeft: 210,
     marginRight: 14,
   },
-
   cardImage: {
     borderRadius: 40,
     resizeMode: 'cover',
@@ -243,26 +204,28 @@ const s = StyleSheet.create({
 
   scroll: { paddingBottom: 44 },
 
+  // Decorative
   swoosh: {
     position: 'absolute',
     top: 0,
-    left: '23%',
+    left: '1%',
     width: 380,
     height: 90,
     transform: [{ rotateZ: '-2deg' }],
     opacity: 0.9,
-    zIndex: 1,
+    zIndex: 2,
   },
   dot: {
     position: 'absolute',
-    top: 75,
-    left: 460,
+    top: 55,
+    left: 280,
     width: 28,
     height: 28,
     zIndex: 1,
     opacity: 0.95,
   },
 
+  // Text blocks
   heading: {
     fontFamily: 'Antonio_700Bold',
     color: 'white',
@@ -286,9 +249,9 @@ const s = StyleSheet.create({
     opacity: 0.95,
   },
 
+  // Form
   grid: { flexDirection: 'row', gap: 18 },
   col: { flex: 1 },
-
   label: {
     color: '#E5E7EB',
     fontFamily: 'AlumniSans_500Medium',
@@ -308,27 +271,35 @@ const s = StyleSheet.create({
     marginBottom: 12,
     fontSize: 17,
   },
-
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 38,
+    marginTop: 20,
     marginBottom: 20,
   },
   checkbox: {
-    width: 22, height: 22, borderRadius: 6,
-    borderWidth: 2, borderColor: 'white', backgroundColor: 'transparent',
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'white',
+    backgroundColor: 'transparent',
   },
   checkboxOn: { backgroundColor: '#E5E7EB' },
-  checkText: { color: '#E5E7EB', fontFamily: 'AlumniSans_500Medium', fontSize: 20 },
+  checkText: {
+    color: '#E5E7EB',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 23,
+  },
 
+  // CTA + footer
   cta: {
     backgroundColor: '#FACC15',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 32,
+    marginTop: 27,
     shadowColor: '#000',
     shadowOpacity: 0.22,
     shadowRadius: 10,
@@ -341,8 +312,7 @@ const s = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 0.3,
   },
-
-  loginHint: {
+  signupHint: {
     color: '#E5E7EB',
     marginTop: 20,
     fontFamily: 'AlumniSans_500Medium',
@@ -350,8 +320,11 @@ const s = StyleSheet.create({
     alignSelf: 'center',
     opacity: 0.95,
   },
-  loginLink: { color: '#FACC15', fontFamily: 'AlumniSans_500Medium', fontSize: 20 },
-
+  signupLink: {
+    color: '#FACC15',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 20,
+  },
   cornerLogo: {
   position: 'absolute',
   bottom: 40,
@@ -360,5 +333,4 @@ const s = StyleSheet.create({
   opacity: 0.9, // optional, for a softer look
   zIndex: 10,
   },
-
 });
