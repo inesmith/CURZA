@@ -12,12 +12,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 
-type RootStackParamList = {
-  Login: undefined;
-  SignUp: undefined;
-};
+import type { RootStackParamList } from '../../App';
 
-export default function SignUpScreen() {
+export default function LoginScreen() {
   const [centre, setCentre] = useState(false);
   const [terms, setTerms] = useState(false); // kept for future use
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -25,7 +22,6 @@ export default function SignUpScreen() {
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* LOG IN text (above the tab image) */}
         <View style={s.tabTextWrapper}>
           <Pressable
             onPress={() => navigation.navigate('Login')}
@@ -43,7 +39,7 @@ export default function SignUpScreen() {
 
         {/* Left tab artwork */}
         <Image
-          source={require('../../assets/Union.png')}
+          source={require('../../assets/SignupTab-1.png')}
           style={s.logintab}
           resizeMode="contain"
           // pointerEvents="none"
@@ -51,7 +47,7 @@ export default function SignUpScreen() {
 
         {/* Main background */}
         <ImageBackground
-          source={require('../../assets/Union-1.png')}
+          source={require('../../assets/LoginTab-1.png')}
           style={s.card}
           imageStyle={s.cardImage}
           resizeMode="cover"
@@ -114,7 +110,7 @@ export default function SignUpScreen() {
                     <Text style={s.checkText}>Remember me.</Text>
                   </Pressable>
 
-                  <Pressable style={s.cta} onPress={() => { /* TODO: submit */ }}>
+                  <Pressable style={s.cta} onPress={() => navigation.navigate('Dashboard')}>
                     <Text style={s.ctaText}>Log In</Text>
                   </Pressable>
 
@@ -166,15 +162,16 @@ const s = StyleSheet.create({
   },
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
-    fontSize: 26,
+    fontSize: 20,
+    marginLeft: -20,
     letterSpacing: 1,
     marginBottom: 18,
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  inactiveTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -65 },
-  activeTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 34 },
+  inactiveTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -60 },
+  activeTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 37 },
 
   logintab: {
     position: 'absolute',

@@ -7,12 +7,30 @@ import { useFonts as useAlumniFonts, AlumniSans_500Medium } from '@expo-google-f
 
 import SignUpScreen from './src/screens/SignUpScreen';
 import LoginScreen from './src/screens/LoginScreen';
+import DashboardScreen from './src/screens/DashboardScreen';
 
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
+// ✨ feature screens
+import SummariesScreen from './src/screens/SummariesScreen';
+import PracticeTestsScreen from './src/screens/PractiseScreen';
+import ResultsScreen from './src/screens/ResultsScreen';
+import ProfileSettingsScreen from './src/screens/ProfileScreen';
+
+
 // Call once at module load
 SplashScreen.preventAutoHideAsync();
+
+export type RootStackParamList = {
+  SignUp: undefined;
+  Login: undefined;
+  Dashboard: undefined;
+  Summaries: undefined;
+  PracticeTests: undefined;
+  Results: undefined;
+  ProfileSettings: undefined;
+};
 
 const Stack = createStackNavigator();
 
@@ -28,6 +46,12 @@ function MainNavigator() {
       >
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Dashboard" component={DashboardScreen} />
+        {/* NEW routes */}
+        <Stack.Screen name="Summaries" component={SummariesScreen} />
+        <Stack.Screen name="PracticeTests" component={PracticeTestsScreen} />
+        <Stack.Screen name="Results" component={ResultsScreen} />
+        <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
