@@ -14,7 +14,7 @@ export default function DashboardScreen() {
       <View style={s.imageWrapper}>
         {/* Left rail artwork (make them NOT capture touches) */}
         <Image source={require('../../assets/SummariesTab.png')} style={s.tab} resizeMode="contain" />
-        <Image source={require('../../assets/PractiseTab.png')}  style={s.tab} resizeMode="contain" />
+        <Image source={require('../../assets/PractiseTab.png')}   style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/ResultsTab.png')}   style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/ProfileTab.png')}   style={s.tab} resizeMode="contain" />
 
@@ -27,7 +27,7 @@ export default function DashboardScreen() {
 
         <View style={[s.tabTextWrapper, s.posPractice]}>
           <Pressable onPress={() => navigation.navigate('PracticeTests')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
-            <Text style={[s.tabText, s.practiseTab]}>PRACTISE TESTS</Text>
+            <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
           </Pressable>
         </View>
 
@@ -53,9 +53,11 @@ export default function DashboardScreen() {
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
-          <View style={[s.tabTextWrapper, s.posActive]}>
-            <Text style={[s.tabText, s.activeTab]}>DASHBOARD</Text>
-          </View>
+          <View style={[s.tabTextWrapper, s.posSummaries]}>
+          <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+            <Text style={[s.tabText, s.dashboardTab]}>Dashboard</Text>
+          </Pressable>
+        </View>
 
           <View style={s.cardInner}>
             <ScrollView contentContainerStyle={s.scroll}>
@@ -117,11 +119,12 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-  activeTab:  { fontWeight: 'bold', marginTop: -60 },
+  dashboardTab:  { fontWeight: 'bold', marginTop: -115, },
   summariesTab:{ opacity: 0.8, marginTop: -15 },
   practiseTab: { opacity: 0.8, marginTop: 20 },
   resultsTab:  { opacity: 0.8, marginTop: 45 },
   profileTab:  { opacity: 0.8, marginTop: 72},
+  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
 
   // Tab artwork
   tab: {
@@ -156,19 +159,19 @@ const s = StyleSheet.create({
   swoosh: {
     position: 'absolute',
     top: 0,
-    left: '21%',
+    left: '20%',
     width: 380,
     height: 90,
     transform: [{ rotateZ: '-2deg' }],
     opacity: 0.9,
-    zIndex: 1,
+    zIndex: 2,
   },
   dot: {
     position: 'absolute',
-    top: 48,
+    top: 50,
     left: -8,
     height: '35%',
-    zIndex: 2,
+    zIndex: 1,
     opacity: 0.95,
   },
 
