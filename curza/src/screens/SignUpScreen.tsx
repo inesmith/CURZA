@@ -203,15 +203,16 @@ const s = StyleSheet.create({
   },
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
-    fontSize: 26,
+    fontSize: 20,
+    marginLeft: -20,
     letterSpacing: 1,
     marginBottom: 18,
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  activeTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -65 },
-  inactiveTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 35 },
+  activeTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -60 },
+  inactiveTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 37 },
 
   logintab: {
     position: 'absolute',
