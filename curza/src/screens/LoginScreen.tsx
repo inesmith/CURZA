@@ -1,4 +1,3 @@
-// src/screens/LoginScreen.tsx
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView, Image, ImageBackground,
@@ -7,27 +6,31 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-// ✅ NEW
 import { signInWithEmailPassword } from '../services/authService';
+import { humanAuthError } from "../utils/firebaseErrors";
+import { useNotice } from "../contexts/NoticeProvider"; // global modal
 
 export default function LoginScreen() {
   const [centre, setCentre] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
-  // ✅ NEW
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null); // kept, but not rendered
+
+  const { show } = useNotice();
 
   const onLogin = async () => {
     try {
       setError(null);
       setSubmitting(true);
       await signInWithEmailPassword(email.trim(), password);
-      // Navigation will switch automatically via RootNav (AuthProvider)
+      show("You have successfully logged in, welcome back.", "success");
     } catch (e: any) {
-      setError(e?.message ?? 'Login failed');
+      const msg = humanAuthError(e?.code);
+      setError(msg);      // retained for logic/debug if you need it
+      show(msg, "error"); // only modal shows the message
     } finally {
       setSubmitting(false);
     }
@@ -72,12 +75,12 @@ export default function LoginScreen() {
                 <View style={s.col}>
                   {/* (ID Number kept, not used for auth) */}
                   <Text style={s.label}>ID Number</Text>
-                  <TextInput placeholder="Your ID Number" placeholderTextColor="#C7D2FE" style={s.input} keyboardType="number-pad" />
+                  <TextInput placeholder="Your ID Number" placeholderTextColor="white" style={s.input} keyboardType="number-pad" />
 
                   <Text style={s.label}>Email</Text>
                   <TextInput
                     placeholder="Your Email"
-                    placeholderTextColor="#C7D2FE"
+                    placeholderTextColor="white"
                     style={s.input}
                     keyboardType="email-address"
                     autoCapitalize="none"
@@ -88,7 +91,7 @@ export default function LoginScreen() {
                   <Text style={s.label}>Password</Text>
                   <TextInput
                     placeholder="Your Password"
-                    placeholderTextColor="#C7D2FE"
+                    placeholderTextColor="white"
                     style={s.input}
                     secureTextEntry
                     value={password}
@@ -100,17 +103,12 @@ export default function LoginScreen() {
                     <Text style={s.checkText}>Remember me.</Text>
                   </Pressable>
 
-                  {/* ✅ Log in with Firebase */}
+                  {/* Log in with Firebase */}
                   <Pressable style={s.cta} onPress={onLogin} disabled={submitting}>
                     <Text style={s.ctaText}>{submitting ? 'Logging in…' : 'Log In'}</Text>
                   </Pressable>
 
-                  {!!error && (
-                    <Text style={{ color: '#fecaca', marginTop: 10, textAlign: 'center' }}>
-                      {error}
-                    </Text>
-                  )}
-
+                  {/* inline error removed — modal only */}
                   <Text style={s.signupHint}>
                     Not registered? <Text style={s.signupLink} onPress={() => navigation.navigate('SignUp')}>Sign Up</Text>
                   </Text>
@@ -166,7 +164,7 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  inactiveTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -60 },
+  inactiveTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -62 },
   activeTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 37 },
 
   logintab: {
@@ -319,11 +317,11 @@ const s = StyleSheet.create({
     fontSize: 20,
   },
   cornerLogo: {
-  position: 'absolute',
-  bottom: 40,
-  left: -55,
-  height: 130,
-  opacity: 0.9, // optional, for a softer look
-  zIndex: 10,
+    position: 'absolute',
+    bottom: 40,
+    left: -55,
+    height: 130,
+    opacity: 0.9,
+    zIndex: 10,
   },
 });
