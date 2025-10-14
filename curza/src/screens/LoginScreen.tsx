@@ -1,23 +1,37 @@
+// src/screens/LoginScreen.tsx
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  Image,
-  ImageBackground,
+  View, Text, TextInput, Pressable, StyleSheet, ScrollView, Image, ImageBackground,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-
 import type { RootStackParamList } from '../../App';
+
+// ✅ NEW
+import { signInWithEmailPassword } from '../services/authService';
 
 export default function LoginScreen() {
   const [centre, setCentre] = useState(false);
-  const [terms, setTerms] = useState(false); // kept for future use
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+
+  // ✅ NEW
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onLogin = async () => {
+    try {
+      setError(null);
+      setSubmitting(true);
+      await signInWithEmailPassword(email.trim(), password);
+      // Navigation will switch automatically via RootNav (AuthProvider)
+    } catch (e: any) {
+      setError(e?.message ?? 'Login failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <View style={s.page}>
@@ -31,21 +45,9 @@ export default function LoginScreen() {
           </Pressable>
         </View>
 
-        <Image
-          source={require('../../assets/curza-logo.png')}
-          style={s.cornerLogo}
-          resizeMode="contain"
-        />
+        <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
+        <Image source={require('../../assets/SignupTab-1.png')} style={s.logintab} resizeMode="contain" />
 
-        {/* Left tab artwork */}
-        <Image
-          source={require('../../assets/SignupTab-1.png')}
-          style={s.logintab}
-          resizeMode="contain"
-          // pointerEvents="none"
-        />
-
-        {/* Main background */}
         <ImageBackground
           source={require('../../assets/LoginTab-1.png')}
           style={s.card}
@@ -60,34 +62,17 @@ export default function LoginScreen() {
 
           <View style={s.cardInner}>
             <ScrollView contentContainerStyle={s.scroll}>
-              {/* Decorative images */}
-              <Image
-                source={require('../../assets/swoosh-yellow.png')}
-                style={s.swoosh}
-                resizeMode="contain"
-              />
-              <Image
-                source={require('../../assets/dot-white.png')}
-                style={s.dot}
-                resizeMode="contain"
-              />
+              <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
+              <Image source={require('../../assets/dot-white.png')} style={s.dot} resizeMode="contain" />
 
-              {/* Header */}
               <Text style={s.heading}>Welcome Back</Text>
-              <Text style={s.sub}>
-                Pick up where you left off and keep building your learning {'\n'}journey.
-              </Text>
+              <Text style={s.sub}>Pick up where you left off and keep building your learning {'\n'}journey.</Text>
 
-              {/* Form */}
               <View style={s.grid}>
                 <View style={s.col}>
+                  {/* (ID Number kept, not used for auth) */}
                   <Text style={s.label}>ID Number</Text>
-                  <TextInput
-                    placeholder="Your ID Number"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                    keyboardType="number-pad"
-                  />
+                  <TextInput placeholder="Your ID Number" placeholderTextColor="#C7D2FE" style={s.input} keyboardType="number-pad" />
 
                   <Text style={s.label}>Email</Text>
                   <TextInput
@@ -95,6 +80,9 @@ export default function LoginScreen() {
                     placeholderTextColor="#C7D2FE"
                     style={s.input}
                     keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={setEmail}
                   />
 
                   <Text style={s.label}>Password</Text>
@@ -103,6 +91,8 @@ export default function LoginScreen() {
                     placeholderTextColor="#C7D2FE"
                     style={s.input}
                     secureTextEntry
+                    value={password}
+                    onChangeText={setPassword}
                   />
 
                   <Pressable style={s.checkRow} onPress={() => setCentre(v => !v)}>
@@ -110,15 +100,21 @@ export default function LoginScreen() {
                     <Text style={s.checkText}>Remember me.</Text>
                   </Pressable>
 
-                  <Pressable style={s.cta} onPress={() => navigation.navigate('Dashboard')}>
-                    <Text style={s.ctaText}>Log In</Text>
+                  {/* ✅ Log in with Firebase */}
+                  <Pressable style={s.cta} onPress={onLogin} disabled={submitting}>
+                    <Text style={s.ctaText}>{submitting ? 'Logging in…' : 'Log In'}</Text>
                   </Pressable>
 
+                  {!!error && (
+                    <Text style={{ color: '#fecaca', marginTop: 10, textAlign: 'center' }}>
+                      {error}
+                    </Text>
+                  )}
+
                   <Text style={s.signupHint}>
-                    Not registered? <Text style={s.signupLink}>Sign Up</Text>
+                    Not registered? <Text style={s.signupLink} onPress={() => navigation.navigate('SignUp')}>Sign Up</Text>
                   </Text>
                 </View>
-
                 <View style={s.col} />
               </View>
             </ScrollView>

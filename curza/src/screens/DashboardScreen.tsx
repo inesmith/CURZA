@@ -3,11 +3,13 @@ import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground }
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
+import { useResponsive } from '../ui/responsive';
 
 export default function DashboardScreen() {
   const [centre, setCentre] = useState(false);
   const [terms, setTerms] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const R = useResponsive();
 
   return (
     <View style={s.page}>
