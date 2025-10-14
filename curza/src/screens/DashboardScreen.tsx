@@ -1,26 +1,81 @@
-import React, { useState } from 'react';
+// src/screens/DashboardScreen.tsx
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { useResponsive } from '../ui/responsive';
 
+// Firebase
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
+
+const SWOOSH_W = 380; // must match s.swoosh.width
+
 export default function DashboardScreen() {
-  const [centre, setCentre] = useState(false);
-  const [terms, setTerms] = useState(false);
+  const [firstName, setFirstName] = useState<string>('');
+  const [headingW, setHeadingW] = useState(0);
+  const [headingX, setHeadingX] = useState(0);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const R = useResponsive();
+
+  const getFirst = (raw?: string | null): string => {
+    if (!raw) return '';
+    const t = raw.trim();
+    if (!t) return '';
+    if (t.includes('@')) return t.split('@')[0];
+    return t.split(/\s+/)[0];
+  };
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setFirstName('');
+        return;
+      }
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        const profileFullName = snap.exists() ? (snap.data()?.fullName as string | undefined) : undefined;
+
+        const name =
+          getFirst(profileFullName) ||
+          getFirst(user.displayName) ||
+          getFirst(user.email) ||
+          '';
+
+        setFirstName(name);
+      } catch {
+        const fallback =
+          getFirst(user.displayName) ||
+          getFirst(user.email) ||
+          '';
+        setFirstName(fallback);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const headingText = firstName
+    ? `WELCOME BACK, ${firstName.toUpperCase()}`
+    : 'WELCOME BACK';
+
+  // Exact center alignment: center(swoosh) = center(text)
+  // left = textX + textW/2 - swooshW/2
+  const swooshLeft =
+    headingW > 0 ? (headingX + headingW / 2) - (SWOOSH_W / 2) - 30 : '20%';
 
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left rail artwork (make them NOT capture touches) */}
+        {/* Left rail artwork */}
         <Image source={require('../../assets/SummariesTab.png')} style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/PractiseTab.png')}   style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/ResultsTab.png')}   style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/ProfileTab.png')}   style={s.tab} resizeMode="contain" />
 
-        {/* Clickable text labels, each with its own position */}
+        {/* Clickable text labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable onPress={() => navigation.navigate('Summaries')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
             <Text style={[s.tabText, s.summariesTab]}>SUMMARIES</Text>
@@ -56,16 +111,32 @@ export default function DashboardScreen() {
           resizeMode="cover"
         >
           <View style={[s.tabTextWrapper, s.posSummaries]}>
-          <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
-            <Text style={[s.tabText, s.dashboardTab]}>Dashboard</Text>
-          </Pressable>
-        </View>
+            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+              <Text style={[s.tabText, s.dashboardTab]}>Dashboard</Text>
+            </Pressable>
+          </View>
 
           <View style={s.cardInner}>
             <ScrollView contentContainerStyle={s.scroll}>
-              <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
+              <Image
+                source={require('../../assets/swoosh-yellow.png')}
+                style={[s.swoosh, { left: swooshLeft }]}
+                resizeMode="contain"
+              />
+
               <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
-              <Text style={s.heading}>WELCOME BACK, ARMAND</Text>
+
+              <Text
+                style={s.heading}
+                onLayout={(e) => {
+                  const { x, width } = e.nativeEvent.layout;
+                  setHeadingX(x);
+                  setHeadingW(width);
+                }}
+              >
+                {headingText}
+              </Text>
+
               <Text style={s.sub}>Ready to learn today?</Text>
             </ScrollView>
           </View>
@@ -103,7 +174,7 @@ const s = StyleSheet.create({
     zIndex: 5,
   },
 
-  // Individual vertical positions (tweak these to align with your art)
+  // Individual vertical positions
   posActive:    { top: '15%' },
   posSummaries: { top: '22%' },
   posPractice:  { top: '30%' },
@@ -161,8 +232,7 @@ const s = StyleSheet.create({
   swoosh: {
     position: 'absolute',
     top: 0,
-    left: '20%',
-    width: 380,
+    width: SWOOSH_W,
     height: 90,
     transform: [{ rotateZ: '-2deg' }],
     opacity: 0.9,
