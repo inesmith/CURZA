@@ -9,7 +9,11 @@
     "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#1F2937",
-      "resizeMode": "contain"
+      "resizeMode": "contain",
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    }
     },
     "ios": {
       "supportsTablet": true
@@ -30,3 +34,5 @@
     ]
   }
 }
+
+

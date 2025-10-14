@@ -1,146 +1,96 @@
+// src/screens/SignUpScreen.tsx
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  Image,
-  ImageBackground,
+  View, Text, TextInput, Pressable, StyleSheet, ScrollView, Image, ImageBackground,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native'; 
+import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 
-type RootStackParamList = {
-  Login: undefined;
-  SignUp: undefined;
-  // Add other routes here if needed
-};
+type RootStackParamList = { Login: undefined; SignUp: undefined };
+
+import { signUpWithEmail } from '../services/authService'; // ✅ NEW
 
 export default function SignUpScreen() {
   const [centre, setCentre] = useState(false);
   const [terms, setTerms] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
+  // ✅ NEW
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onCreate = async () => {
+    if (!terms) { setError('Please accept the terms & conditions.'); return; }
+    try {
+      setError(null);
+      setSubmitting(true);
+      await signUpWithEmail(email.trim(), password, fullName.trim() || undefined);
+      // Auth guard will navigate to Dashboard stack automatically
+    } catch (e: any) {
+      setError(e?.message ?? 'Sign up failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left navigation bar with text overlay */}
-        <Image
-          source={require('../../assets/logintab.png')}
-          style={s.logintab}
-          resizeMode="contain"
-        />
+        <Image source={require('../../assets/logintab.png')} style={s.logintab} resizeMode="contain" />
         <View style={s.tabTextWrapper}>
-          <Pressable
-            onPress={() => navigation.navigate('Login')}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
+          <Pressable onPress={() => navigation.navigate('Login')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.inactiveTab]}>LOG IN</Text>
           </Pressable>
         </View>
 
-        <Image
-        source={require('../../assets/curza-logo.png')}
-        style={s.cornerLogo}
-        resizeMode="contain"
-        />
+        <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
 
-        {/*  Main background */}
-        <ImageBackground
-          source={require('../../assets/signup.png')}
-          style={s.card}
-          imageStyle={s.cardImage}
-          resizeMode="cover"
-        >
+        <ImageBackground source={require('../../assets/signup.png')} style={s.card} imageStyle={s.cardImage} resizeMode="cover">
           <View style={s.tabTextWrapper}>
             <Text style={[s.tabText, s.activeTab]}>SIGN UP</Text>
           </View>
 
           <View style={s.cardInner}>
             <ScrollView contentContainerStyle={s.scroll}>
-              {/* Decorative images */}
-              <Image
-                source={require('../../assets/swoosh-yellow.png')}
-                style={s.swoosh}
-                resizeMode="contain"
-              />
-              <Image
-                source={require('../../assets/dot-white.png')}
-                style={s.dot}
-                resizeMode="contain"
-              />
+              <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
+              <Image source={require('../../assets/dot-white.png')} style={s.dot} resizeMode="contain" />
 
-              {/* Header */}
               <Text style={s.heading}>CREATE YOUR CURZA ACCOUNT</Text>
-              <Text style={s.sub}>
-                Set up your profile and start learning smarter, with tools {'\n'}built for your curriculum.
-              </Text>
+              <Text style={s.sub}>Set up your profile and start learning smarter, with tools {'\n'}built for your curriculum.</Text>
 
-              {/* Form */}
               <View style={s.grid}>
                 <View style={s.col}>
                   <Text style={s.label}>Full Name</Text>
-                  <TextInput
-                    placeholder="Your Name & Surname"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
+                  <TextInput placeholder="Your Name & Surname" placeholderTextColor="#C7D2FE" style={s.input}
+                    value={fullName} onChangeText={setFullName} />
 
                   <Text style={s.label}>ID Number</Text>
-                  <TextInput
-                    placeholder="Your ID Number"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                    keyboardType="number-pad"
-                  />
+                  <TextInput placeholder="Your ID Number" placeholderTextColor="#C7D2FE" style={s.input} keyboardType="number-pad" />
 
                   <Text style={s.label}>Email</Text>
-                  <TextInput
-                    placeholder="Your Email"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                    keyboardType="email-address"
-                  />
+                  <TextInput placeholder="Your Email" placeholderTextColor="#C7D2FE" style={s.input}
+                    keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
 
                   <Text style={s.label}>Password</Text>
-                  <TextInput
-                    placeholder="Your Password"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                    secureTextEntry
-                  />
+                  <TextInput placeholder="Your Password" placeholderTextColor="#C7D2FE" style={s.input}
+                    secureTextEntry value={password} onChangeText={setPassword} />
 
                   <Text style={s.label}>Curriculum</Text>
-                  <TextInput
-                    placeholder="CAPS"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
+                  <TextInput placeholder="CAPS" placeholderTextColor="#C7D2FE" style={s.input} />
 
                   <Text style={s.label}>Grade</Text>
-                  <TextInput
-                    placeholder="12"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
+                  <TextInput placeholder="12" placeholderTextColor="#C7D2FE" style={s.input} />
                 </View>
 
                 <View style={s.col}>
                   <Text style={s.label}>Language</Text>
-                  <TextInput
-                    placeholder="English"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
+                  <TextInput placeholder="English" placeholderTextColor="#C7D2FE" style={s.input} />
 
                   <Text style={s.label}>Subjects</Text>
-                  <TextInput
-                    placeholder="4 Selected"
-                    placeholderTextColor="#C7D2FE"
-                    style={s.input}
-                  />
+                  <TextInput placeholder="4 Selected" placeholderTextColor="#C7D2FE" style={s.input} />
 
                   <Pressable style={s.checkRow} onPress={() => setCentre(v => !v)}>
                     <View style={[s.checkbox, centre && s.checkboxOn]} />
@@ -152,12 +102,19 @@ export default function SignUpScreen() {
                     <Text style={s.checkText}>I agree to all terms & conditions.</Text>
                   </Pressable>
 
-                  <Pressable style={s.cta} onPress={() => { /* TODO: submit */ }}>
-                    <Text style={s.ctaText}>Create Account</Text>
+                  {/* ✅ Create account with Firebase */}
+                  <Pressable style={s.cta} onPress={onCreate} disabled={submitting}>
+                    <Text style={s.ctaText}>{submitting ? 'Creating…' : 'Create Account'}</Text>
                   </Pressable>
 
+                  {!!error && (
+                    <Text style={{ color: '#fecaca', marginTop: 10, textAlign: 'center' }}>
+                      {error}
+                    </Text>
+                  )}
+
                   <Text style={s.loginHint}>
-                    Already have an account? <Text style={s.loginLink}>Log in</Text>
+                    Already have an account? <Text style={s.loginLink} onPress={() => navigation.navigate('Login')}>Log in</Text>
                   </Text>
                 </View>
               </View>

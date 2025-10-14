@@ -1,3 +1,4 @@
+// App.tsx
 import 'react-native-gesture-handler';
 import { useCallback, useState } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
@@ -12,12 +13,14 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
-// ✨ feature screens
+// feature screens
 import SummariesScreen from './src/screens/SummariesScreen';
 import PracticeTestsScreen from './src/screens/PractiseScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import ProfileSettingsScreen from './src/screens/ProfileScreen';
 
+// ✅ NEW
+import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
 
 // Call once at module load
 SplashScreen.preventAutoHideAsync();
@@ -34,48 +37,53 @@ export type RootStackParamList = {
 
 const Stack = createStackNavigator();
 
-function MainNavigator() {
+// ✅ NEW: split stacks (keeps your routes unchanged)
+function SignedOutStack() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="SignUp"
-        screenOptions={{
-          headerShown: false, // your screens already have custom headers
-          animation: 'fade',
-        }}
-      >
-        <Stack.Screen name="SignUp" component={SignUpScreen} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Dashboard" component={DashboardScreen} />
-        {/* NEW routes */}
-        <Stack.Screen name="Summaries" component={SummariesScreen} />
-        <Stack.Screen name="PracticeTests" component={PracticeTestsScreen} />
-        <Stack.Screen name="Results" component={ResultsScreen} />
-        <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <Stack.Navigator
+      initialRouteName="SignUp"
+      screenOptions={{ headerShown: false, animation: 'fade' }}
+    >
+      <Stack.Screen name="SignUp" component={SignUpScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+    </Stack.Navigator>
   );
 }
 
+function SignedInStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+      <Stack.Screen name="Dashboard" component={DashboardScreen} />
+      <Stack.Screen name="Summaries" component={SummariesScreen} />
+      <Stack.Screen name="PracticeTests" component={PracticeTestsScreen} />
+      <Stack.Screen name="Results" component={ResultsScreen} />
+      <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
+    </Stack.Navigator>
+  );
+}
+
+// ✅ NEW: gate by auth state
+function RootNav() {
+  const { user, loading } = useAuth();
+  if (loading) return null; // keep splash until auth ready
+  return user ? <SignedInStack /> : <SignedOutStack />;
+}
+
 export default function App() {
-  // Load fonts (expo-google-fonts)
+  // fonts + splash (unchanged)
   const [fontsALoaded] = useFonts({ Antonio_700Bold });
   const [fontsBLoaded] = useAlumniFonts({ AlumniSans_500Medium });
-
   const [showApp, setShowApp] = useState(false);
 
   const onReady = useCallback(async () => {
     if (fontsALoaded && fontsBLoaded) {
       await SplashScreen.hideAsync();
-      // Short delay so your custom splash is visible and feels intentional
       setTimeout(() => setShowApp(true), 1200);
     }
   }, [fontsALoaded, fontsBLoaded]);
 
-  // Block render until fonts are ready
   if (!(fontsALoaded && fontsBLoaded)) return null;
 
-  // Show custom splash until onReady flips showApp
   if (!showApp) {
     return (
       <View style={styles.splash} onLayout={onReady}>
@@ -89,8 +97,14 @@ export default function App() {
     );
   }
 
-  // Main app after splash
-  return <MainNavigator />;
+  // ✅ Wrap with AuthProvider and render RootNav
+  return (
+    <AuthProvider>
+      <NavigationContainer>
+        <RootNav />
+      </NavigationContainer>
+    </AuthProvider>
+  );
 }
 
 const styles = StyleSheet.create({
