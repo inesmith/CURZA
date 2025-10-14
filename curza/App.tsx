@@ -19,8 +19,9 @@ import PracticeTestsScreen from './src/screens/PractiseScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import ProfileSettingsScreen from './src/screens/ProfileScreen';
 
-// ✅ NEW
+// NEW
 import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
+import { NoticeProvider } from "./src/contexts/NoticeProvider";
 
 // Call once at module load
 SplashScreen.preventAutoHideAsync();
@@ -62,7 +63,7 @@ function SignedInStack() {
   );
 }
 
-// ✅ NEW: gate by auth state
+//  NEW: gate by auth state
 function RootNav() {
   const { user, loading } = useAuth();
   if (loading) return null; // keep splash until auth ready
@@ -100,9 +101,11 @@ export default function App() {
   // ✅ Wrap with AuthProvider and render RootNav
   return (
     <AuthProvider>
-      <NavigationContainer>
-        <RootNav />
-      </NavigationContainer>
+      <NoticeProvider> 
+        <NavigationContainer>
+          <RootNav />
+        </NavigationContainer>
+      </NoticeProvider>
     </AuthProvider>
   );
 }

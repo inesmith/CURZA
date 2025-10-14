@@ -1,5 +1,5 @@
 // src/screens/SignUpScreen.tsx
-import React, { useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView, Image, ImageBackground,
 } from 'react-native';
@@ -8,29 +8,151 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 
 type RootStackParamList = { Login: undefined; SignUp: undefined };
 
-import { signUpWithEmail } from '../services/authService'; // ✅ NEW
+import { signUpWithEmail } from '../services/authService';
+import { humanAuthError } from "../utils/firebaseErrors";
+import { useNotice } from "../contexts/NoticeProvider";
+
+// your dropdown components
+import Select, { Option } from "../ui/Select";
+import MultiSelect from "../ui/MultiSelect";
+
+// ✅ data folder
+import { CURRICULUMS } from "../data/curriculums";   // string[]
+import { LANGUAGES } from "../data/languages";       // string[]
+import { SUBJECTS } from "../data/subjects";         // { junior: string[]; senior: string[]; }
+
+// 🔥 Firestore
+import { getAuth } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+// adjust the path to where you export `db`
+import { db } from '../../firebase';
 
 export default function SignUpScreen() {
   const [centre, setCentre] = useState(false);
   const [terms, setTerms] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
-  // ✅ NEW
   const [fullName, setFullName] = useState('');
+  const [idNumber, setIdNumber] = useState(''); // optional, preserved
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null); // not rendered
+
+  const { show } = useNotice();
+
+  // ──────────────────────────────────────────────────────────────────────────────
+  // helpers to keep your Select/MultiSelect API (Option[]) while using data folder
+  const toOptions = (arr: string[]): Option[] =>
+    arr.map((label) => ({
+      label,
+      value: label
+        .toLowerCase()
+        .replace(/[()]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, ''),
+    }));
+
+  const dedupeByLabel = (arr: string[]) => Array.from(new Set(arr));
+
+  // language-specific subjects we must include (both phases)
+  const LANG_SPECIFIC = [
+    "English Home Language",
+    "English First Additional Language",
+    "Afrikaans Home Language",
+    "Afrikaans First Additional Language",
+  ];
+
+  // options for other pickers
+  const CURRICULA: Option[] = useMemo(() => toOptions(CURRICULUMS), []);
+  const GRADES: Option[] = useMemo(
+    () => Array.from({ length: 6 }, (_, i) => {
+      const g = 7 + i;
+      return { value: String(g), label: `Grade ${g}` } as Option;
+    }),
+    []
+  );
+  const LANGS: Option[] = useMemo(() => toOptions(LANGUAGES), []);
+
+  // subjects by phase, merged with HL/FAL variants + de-duplicated
+  const JUNIOR_SUBJECT_OPTIONS: Option[] = useMemo(() => {
+    const merged = dedupeByLabel([...LANG_SPECIFIC, ...SUBJECTS.junior]);
+    return toOptions(merged);
+  }, []);
+  const SENIOR_SUBJECT_OPTIONS: Option[] = useMemo(() => {
+    const merged = dedupeByLabel([...LANG_SPECIFIC, ...SUBJECTS.senior]);
+    return toOptions(merged);
+  }, []);
+
+  // Controlled selections (keep your UI/state names)
+  const [curriculum, setCurriculum] = useState<string | null>(null);
+  const [grade, setGrade] = useState<string | null>(null);
+  const [language, setLanguage] = useState<string | null>(null);
+  const [subjects, setSubjects] = useState<string[]>([]);
+
+  const isJunior = useMemo(() => {
+    const n = parseInt(grade || '', 10);
+    return Number.isFinite(n) ? n < 10 : false;
+  }, [grade]);
+
+  const SUBJECT_OPTIONS = useMemo<Option[]>(() => {
+    return isJunior ? JUNIOR_SUBJECT_OPTIONS : SENIOR_SUBJECT_OPTIONS;
+  }, [isJunior, JUNIOR_SUBJECT_OPTIONS, SENIOR_SUBJECT_OPTIONS]);
+
+  // when switching to Grade 7–9, drop any senior-only selections
+  useEffect(() => {
+    if (!isJunior) return;
+    const juniorSet = new Set(JUNIOR_SUBJECT_OPTIONS.map(s => s.value));
+    setSubjects(prev => prev.filter(v => juniorSet.has(v)));
+  }, [isJunior, JUNIOR_SUBJECT_OPTIONS]);
 
   const onCreate = async () => {
-    if (!terms) { setError('Please accept the terms & conditions.'); return; }
+    if (!terms) {
+      const msg = "Please agree to the terms & conditions.";
+      setError(msg);
+      show(msg, "error");
+      return;
+    }
+    if (!curriculum || !grade || !language || subjects.length === 0) {
+      show("Please complete Curriculum, Grade, Language and Subjects.", "error");
+      return;
+    }
+
     try {
       setError(null);
       setSubmitting(true);
+
+      // 1) Auth sign up
       await signUpWithEmail(email.trim(), password, fullName.trim() || undefined);
-      // Auth guard will navigate to Dashboard stack automatically
+
+      // 2) Persist profile to Firestore (merge-safe)
+      const auth = getAuth();
+      const uid = auth.currentUser?.uid;
+
+      if (uid) {
+        await setDoc(
+          doc(db, 'users', uid),
+          {
+            fullName: fullName.trim(),
+            idNumber: idNumber.trim() || null,
+            email: email.trim().toLowerCase(),
+            curriculum,                 // stored as the selected label (since value === label)
+            grade: parseInt(grade!, 10),
+            language,                   // selected label
+            subjects,                   // array of subject values (slugged labels)
+            centre,                     // learning centre checkbox
+            updatedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      show("Account Created – Let’s Start Learning!", "success");
     } catch (e: any) {
-      setError(e?.message ?? 'Sign up failed');
+      const msg = humanAuthError(e?.code) || "Something went wrong. Please try again.";
+      setError(msg);
+      show(msg, "error");
     } finally {
       setSubmitting(false);
     }
@@ -64,33 +186,88 @@ export default function SignUpScreen() {
               <View style={s.grid}>
                 <View style={s.col}>
                   <Text style={s.label}>Full Name</Text>
-                  <TextInput placeholder="Your Name & Surname" placeholderTextColor="#C7D2FE" style={s.input}
-                    value={fullName} onChangeText={setFullName} />
+                  <TextInput
+                    placeholder="Your Name & Surname"
+                    placeholderTextColor="white"
+                    style={s.input}
+                    value={fullName}
+                    onChangeText={setFullName}
+                  />
 
                   <Text style={s.label}>ID Number</Text>
-                  <TextInput placeholder="Your ID Number" placeholderTextColor="#C7D2FE" style={s.input} keyboardType="number-pad" />
+                  <TextInput
+                    placeholder="Your ID Number"
+                    placeholderTextColor="white"
+                    style={s.input}
+                    keyboardType="number-pad"
+                    value={idNumber}
+                    onChangeText={setIdNumber}
+                  />
 
                   <Text style={s.label}>Email</Text>
-                  <TextInput placeholder="Your Email" placeholderTextColor="#C7D2FE" style={s.input}
-                    keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
+                  <TextInput
+                    placeholder="Your Email"
+                    placeholderTextColor="white"
+                    style={s.input}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={setEmail}
+                  />
 
                   <Text style={s.label}>Password</Text>
-                  <TextInput placeholder="Your Password" placeholderTextColor="#C7D2FE" style={s.input}
-                    secureTextEntry value={password} onChangeText={setPassword} />
+                  <TextInput
+                    placeholder="Your Password"
+                    placeholderTextColor="white"
+                    style={s.input}
+                    secureTextEntry
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+
+                  {/* Dropdowns (looks identical to your inputs) */}
+                  <Text style={s.label}>Grade</Text>
+                  <Select
+                    placeholder="Select Your Grade"
+                    value={grade}
+                    onChange={setGrade}
+                    options={GRADES}
+                    style={s.input}
+                    textStyle={{ color: 'white' }}
+                  />
 
                   <Text style={s.label}>Curriculum</Text>
-                  <TextInput placeholder="CAPS" placeholderTextColor="#C7D2FE" style={s.input} />
-
-                  <Text style={s.label}>Grade</Text>
-                  <TextInput placeholder="12" placeholderTextColor="#C7D2FE" style={s.input} />
+                  <Select
+                    placeholder="Select Your Curriculum"
+                    value={curriculum}
+                    onChange={setCurriculum}
+                    options={CURRICULA}
+                    style={s.input}
+                    textStyle={{ color: 'white' }}
+                  />
                 </View>
 
                 <View style={s.col}>
                   <Text style={s.label}>Language</Text>
-                  <TextInput placeholder="English" placeholderTextColor="#C7D2FE" style={s.input} />
+                  <Select
+                    placeholder="Select Your Language"
+                    value={language}
+                    onChange={setLanguage}
+                    options={LANGS}
+                    style={s.input}
+                    textStyle={{ color: 'white' }}
+                  />
 
                   <Text style={s.label}>Subjects</Text>
-                  <TextInput placeholder="4 Selected" placeholderTextColor="#C7D2FE" style={s.input} />
+                  <MultiSelect
+                    placeholder="Select Subjects"
+                    values={subjects}
+                    onChange={setSubjects}
+                    options={SUBJECT_OPTIONS}
+                    style={s.input}
+                    textStyle={{ color: 'white' }}
+                    max={7}
+                  />
 
                   <Pressable style={s.checkRow} onPress={() => setCentre(v => !v)}>
                     <View style={[s.checkbox, centre && s.checkboxOn]} />
@@ -102,16 +279,9 @@ export default function SignUpScreen() {
                     <Text style={s.checkText}>I agree to all terms & conditions.</Text>
                   </Pressable>
 
-                  {/* ✅ Create account with Firebase */}
                   <Pressable style={s.cta} onPress={onCreate} disabled={submitting}>
                     <Text style={s.ctaText}>{submitting ? 'Creating…' : 'Create Account'}</Text>
                   </Pressable>
-
-                  {!!error && (
-                    <Text style={{ color: '#fecaca', marginTop: 10, textAlign: 'center' }}>
-                      {error}
-                    </Text>
-                  )}
 
                   <Text style={s.loginHint}>
                     Already have an account? <Text style={s.loginLink} onPress={() => navigation.navigate('Login')}>Log in</Text>
@@ -168,7 +338,7 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  activeTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -60 },
+  activeTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -62 },
   inactiveTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 37 },
 
   logintab: {
@@ -311,12 +481,11 @@ const s = StyleSheet.create({
   loginLink: { color: '#FACC15', fontFamily: 'AlumniSans_500Medium', fontSize: 20 },
 
   cornerLogo: {
-  position: 'absolute',
-  bottom: 40,
-  left: -55,
-  height: 130,
-  opacity: 0.9, // optional, for a softer look
-  zIndex: 10,
+    position: 'absolute',
+    bottom: 40,
+    left: -55,
+    height: 130,
+    opacity: 0.9,
+    zIndex: 10,
   },
-
 });
