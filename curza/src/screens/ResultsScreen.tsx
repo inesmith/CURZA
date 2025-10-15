@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-export default function DashboardScreen() {
+export default function ResultsScreen() {
   const [centre, setCentre] = useState(false);
   const [terms, setTerms] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -55,7 +55,7 @@ export default function DashboardScreen() {
         >
           <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
-            <Text style={[s.tabText, s.dashboardTab]}>Dashboard</Text>
+            <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
           </Pressable>
         </View>
 

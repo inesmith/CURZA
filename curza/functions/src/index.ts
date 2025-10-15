@@ -1,155 +1,125 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
+import { defineSecret } from "firebase-functions/params";
 
-// Admin init
 initializeApp();
 
-/**
- * Read from secret injected by Cloud Functions (Gen-2)
- * Set with: `firebase functions:secrets:set OPENAI_API_KEY`
- */
-function requireOpenAIKey() {
-  const key = process.env.OPENAI_API_KEY ?? "";
-  if (!key) {
-    // Don't crash locally—just warn; but in prod we expect it to be set.
-    console.warn("OPENAI_API_KEY is not set.");
-  }
-  return key;
-}
+// Use Secret Manager (what you just deployed)
+const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 
-type SummaryReq = { text: string; subject: string; grade: number };
-type QuizReq = { text: string; subject: string; grade: number; count?: number };
+const MODEL = "gpt-4o-mini"; // small/fast; swap to bigger when needed
 
-const MODEL = "gpt-4o-mini";
+type CreateTestReq = {
+  subject: string;        // "Physical Sciences"
+  grade: number;          // 7..12
+  mode: "full" | "section";
+  examType?: string;      // e.g. "Paper 1" | "Paper 2" | "June Exam" | "Trial Exam"
+  topic?: string;         // only for section mode (e.g., "Mechanics: Newton's Laws")
+  minutes?: number;       // optional explicit time limit; if absent we suggest one
+};
 
-// Helper to call OpenAI Responses API using Node 20's global fetch
-async function callResponses(apiKey: string, body: any) {
+// quick helper for OpenAI Responses API
+async function callResponses(key: string, body: any) {
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`OpenAI ${res.status}: ${text}`);
+    throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
   }
-  return (await res.json()) as any;
+  return res.json() as Promise<any>;
 }
 
-// === Summaries + Flashcards ===
-export const summarize = onCall<SummaryReq>(
-  {
-    region: "us-central1",
-    timeoutSeconds: 120,
-    memory: "256MiB",
-    secrets: ["OPENAI_API_KEY"],
-  },
-  async (request) => {
-    const { auth, data } = request;
-    if (!auth) throw new HttpsError("unauthenticated", "Sign in required");
+/**
+ * createTest
+ * Returns an exam-like test structure (not a “quiz”):
+ * - title, durationMinutes (suggested if not provided)
+ * - sections[] with items[] (MCQ/short/calc), each with points + marking guidance
+ */
+export const createTest = onCall({ secrets: [OPENAI_API_KEY] }, async (request) => {
+  const { auth, data } = request;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required");
 
-    const { text, subject, grade } = data;
-    const schema = {
-      type: "object",
-      properties: {
-        summary: { type: "string" },
-        bullets: { type: "array", items: { type: "string" } },
-        keyConcepts: { type: "array", items: { type: "string" } },
-        flashcards: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: { q: { type: "string" }, a: { type: "string" } },
-            required: ["q", "a"],
-          },
-        },
-      },
-      required: ["summary", "bullets", "keyConcepts", "flashcards"],
-    };
+  const { subject, grade, mode, examType, topic, minutes } = data as CreateTestReq;
 
-    const input = [
-      {
-        role: "system",
-        content: `You are a South African ${subject} tutor for Grade ${grade}. Use clear, exam-ready language.`,
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "Summarize this content, produce 5–8 bullets, list key concepts, and create 8 flashcards.",
-          },
-          { type: "text", text },
-        ],
-      },
-    ];
-
-    const out = await callResponses(requireOpenAIKey(), {
-      model: MODEL,
-      input,
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "summaryPack", schema },
-      },
-    });
-
-    const payload = JSON.parse(out.output[0].content[0].text as string);
-    return payload;
+  if (!subject || !grade || !mode) {
+    throw new HttpsError("invalid-argument", "subject, grade and mode are required");
   }
-);
+  if (mode === "section" && !topic) {
+    throw new HttpsError("invalid-argument", "topic is required for section mode");
+  }
 
-// === Build MCQ quiz ===
-export const buildQuiz = onCall<QuizReq>(
-  {
-    region: "us-central1",
-    timeoutSeconds: 120,
-    memory: "256MiB",
-    secrets: ["OPENAI_API_KEY"],
-  },
-  async (request) => {
-    const { auth, data } = request;
-    if (!auth) throw new HttpsError("unauthenticated", "Sign in required");
-
-    const { text, subject, grade, count = 10 } = data;
-
-    const schema = {
-      type: "object",
-      properties: {
+  // JSON schema we want back
+  const schema = {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      durationMinutes: { type: "number" },
+      sections: {
+        type: "array",
         items: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              stem: { type: "string" },
-              choices: { type: "array", items: { type: "string" } },
-              answerIndex: { type: "integer" },
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            instructions: { type: "string" },
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  type: { type: "string", enum: ["mcq", "short", "calc"] },
+                  stem: { type: "string" },
+                  choices: { type: "array", items: { type: "string" } },   // only for mcq
+                  answer: { type: "string" },                              // model answer / marking points
+                  points: { type: "number" },
+                },
+                required: ["id", "type", "stem", "answer", "points"],
+              },
             },
-            required: ["id", "stem", "choices", "answerIndex"],
           },
+          required: ["title", "instructions", "items"],
         },
       },
-      required: ["items"],
-    };
+      markingGuidelines: { type: "string" },
+    },
+    required: ["title", "durationMinutes", "sections", "markingGuidelines"],
+  };
 
-    const input = [
-      {
-        role: "system",
-        content: `Create ${count} CAPS-aligned multiple-choice questions for Grade ${grade} ${subject}. One correct answer, plausible distractors.`,
-      },
-      { role: "user", content: [{ type: "text", text }] },
-    ];
+  // If minutes is not provided, we’ll ask the model to suggest one that is
+  // typical for the subject/grade/examType/section.
+  const ask = (minutes
+    ? `Use ${minutes} minutes total.`
+    : `Suggest a realistic total time in minutes for Grade ${grade} ${subject}${examType ? " (" + examType + ")" : ""}${mode === "section" ? " section test" : " full paper"}.`);
 
-    const out = await callResponses(requireOpenAIKey(), {
-      model: MODEL,
-      input,
-      response_format: { type: "json_schema", json_schema: { name: "quiz", schema } },
-    });
+  const input = [
+    {
+      role: "system",
+      content:
+        `You are a CAPS-aligned exam setter for South African Grade ${grade} ${subject}. ` +
+        `Create a structured ${mode === "full" ? "full exam" : "section test"} with clear sections and points. ` +
+        `Use exam-ready phrasing and realistic marking points.`,
+    },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: `${mode === "full" ? `Create a full paper${examType ? " for " + examType : ""}.` : `Create a section test on: ${topic}.`}` },
+        { type: "text", text: ask },
+        { type: "text", text: `Return JSON with: title, durationMinutes, sections[{title,instructions,items[{id,type(mcq|short|calc),stem,choices?,answer,points}]}], markingGuidelines.` },
+      ],
+    },
+  ];
 
-    const payload = JSON.parse(out.output[0].content[0].text as string);
-    return payload;
-  }
-);
+  const out = await callResponses(OPENAI_API_KEY.value(), {
+    model: MODEL,
+    input,
+    response_format: { type: "json_schema", json_schema: { name: "exam", schema } },
+  });
+
+  const payload = JSON.parse(out.output[0].content[0].text as string);
+  return payload;
+});

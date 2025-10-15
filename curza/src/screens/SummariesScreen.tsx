@@ -4,11 +4,42 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-export default function DashboardScreen() {
+// AI callables (no UI changes required)
+import { summarizeAI, buildQuizAI } from '../../firebase';
+
+export default function SummariesScreen() {
   const [centre, setCentre] = useState(false);
   const [terms, setTerms] = useState(false);
-  const [showDrop, setShowDrop] = useState(false); // ⬅️ toggle for dropdown + tab look
+  const [showDrop, setShowDrop] = useState(false); 
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+
+  // Minimal handlers that trigger on long-press (no visual change)
+  const handleSummarize = async () => {
+    try {
+      const res = await summarizeAI({
+        text: "Photosynthesis allows plants to convert light energy into chemical energy stored in glucose.",
+        subject: "Life Sciences",
+        grade: 10,
+      });
+      console.log('summarizeAI ->', res.data);
+    } catch (err) {
+      console.log('summarizeAI error:', err);
+    }
+  };
+
+  const handleBuildQuiz = async () => {
+    try {
+      const res = await buildQuizAI({
+        text: "Newton's three laws of motion and their applications in everyday scenarios.",
+        subject: "Physical Sciences",
+        grade: 11,
+        count: 8,
+      });
+      console.log('buildQuizAI ->', res.data);
+    } catch (err) {
+      console.log('buildQuizAI error:', err);
+    }
+  };
 
   return (
     <View style={s.page}>
@@ -23,7 +54,7 @@ export default function DashboardScreen() {
         {showDrop && (
           <Image
             source={require('../../assets/SummariesDropTab.png')}
-            style={s.dropTab}          // sits above rail art, below text
+            style={s.dropTab}          
             resizeMode="contain"
           />
         )}
@@ -31,7 +62,9 @@ export default function DashboardScreen() {
         {/* Clickable text labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable
-            onPress={() => setShowDrop(v => !v)}                 // tap again to open/close & change look
+            onPress={() => setShowDrop(v => !v)}                 
+            onLongPress={handleSummarize}                        
+            delayLongPress={300}
             hitSlop={{ top:12, bottom:12, left:12, right:12 }}
           >
             <Text style={[s.tabText, showDrop ? s.summariesActive : s.summariesTab]}>
@@ -41,7 +74,12 @@ export default function DashboardScreen() {
         </View>
 
         <View style={[s.tabTextWrapper, s.posPractice]}>
-          <Pressable onPress={() => navigation.navigate('PracticeTests')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable
+            onPress={() => navigation.navigate('PracticeTests')}
+            onLongPress={handleBuildQuiz}                       
+            delayLongPress={300}
+            hitSlop={{ top:12, bottom:12, left:12, right:12 }}
+          >
             <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
           </Pressable>
         </View>
@@ -71,7 +109,7 @@ export default function DashboardScreen() {
           {/* Optional quick link */}
           <View style={[s.tabTextWrapper, s.posSummaries]}>
             <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
-              <Text style={[s.tabText, s.dashboardTab]}>Dashboard</Text>
+              <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
             </Pressable>
           </View>
 
