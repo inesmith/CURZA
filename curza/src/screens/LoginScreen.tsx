@@ -73,9 +73,7 @@ export default function LoginScreen() {
 
               <View style={s.grid}>
                 <View style={s.col}>
-                  {/* (ID Number kept, not used for auth) */}
-                  <Text style={s.label}>ID Number</Text>
-                  <TextInput placeholder="Your ID Number" placeholderTextColor="white" style={s.input} keyboardType="number-pad" />
+                 
 
                   <Text style={s.label}>Email</Text>
                   <TextInput
