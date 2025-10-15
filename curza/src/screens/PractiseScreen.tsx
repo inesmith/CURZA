@@ -4,10 +4,47 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-export default function DashboardScreen() {
+// ✅ AI callable
+import { createTestAI } from '../../firebase';
+
+export default function SummariesScreen() {
   const [centre, setCentre] = useState(false);
   const [terms, setTerms] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+
+  // Full test (example)
+  const handleFullTest = async () => {
+    try {
+      const res = await createTestAI({
+        subject: "Physical Sciences",
+        grade: 11,
+        mode: "full",
+        examType: "Paper 1",      // optional
+        // minutes: 180,          // uncomment to force time; otherwise model suggests
+      });
+      console.log('createTestAI(full) ->', res.data);
+      // Next: navigate to a “TestRunner” screen with res.data
+    } catch (err) {
+      console.log('createTestAI(full) error:', err);
+    }
+  };
+
+  // Section test (example)
+  const handleSectionTest = async () => {
+    try {
+      const res = await createTestAI({
+        subject: "Physical Sciences",
+        grade: 11,
+        mode: "section",
+        topic: "Mechanics: Work, Energy and Power",
+        // minutes: 45,
+      });
+      console.log('createTestAI(section) ->', res.data);
+      // Next: navigate to a “TestRunner” screen with res.data
+    } catch (err) {
+      console.log('createTestAI(section) error:', err);
+    }
+  };
 
   return (
     <View style={s.page}>
@@ -26,13 +63,23 @@ export default function DashboardScreen() {
         </View>
 
         <View style={[s.tabTextWrapper, s.posPractice]}>
-          <Pressable onPress={() => navigation.navigate('PracticeTests')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable
+            onPress={() => navigation.navigate('PracticeTests')}
+            onLongPress={handleFullTest}           // ⬅️ FULL TEST
+            delayLongPress={300}
+            hitSlop={{ top:12, bottom:12, left:12, right:12 }}
+          >
             <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
           </Pressable>
         </View>
 
         <View style={[s.tabTextWrapper, s.posResults]}>
-          <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable
+            onPress={() => navigation.navigate('Results')}
+            onLongPress={handleSectionTest}       // ⬅️ SECTION TEST
+            delayLongPress={300}
+            hitSlop={{ top:12, bottom:12, left:12, right:12 }}
+          >
             <Text style={[s.tabText, s.resultsTab]}>RESULTS</Text>
           </Pressable>
         </View>
@@ -54,10 +101,10 @@ export default function DashboardScreen() {
           resizeMode="cover"
         >
           <View style={[s.tabTextWrapper, s.posSummaries]}>
-          <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
-            <Text style={[s.tabText, s.dashboardTab]}>Dashboard</Text>
-          </Pressable>
-        </View>
+            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+              <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
+            </Pressable>
+          </View>
 
           <View style={s.cardInner}>
             <ScrollView contentContainerStyle={s.scroll}>
