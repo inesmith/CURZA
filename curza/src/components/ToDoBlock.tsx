@@ -74,7 +74,7 @@ const s = StyleSheet.create({
   rowText: {
     color: '#F3F4F6',
     fontFamily: 'Antonio_700Bold',
-    fontSize: 18,
+    fontSize: 16,
     letterSpacing: 0.5,
   },
 

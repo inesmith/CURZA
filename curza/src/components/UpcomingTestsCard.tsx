@@ -51,7 +51,7 @@ const s = StyleSheet.create({
   title: {
     color: '#F3F4F6',
     fontFamily: 'Antonio_700Bold',
-    fontSize: 20,
+    fontSize: 18,
     textAlign: 'center',
     marginBottom: 12,
     letterSpacing: 0.3,
@@ -68,7 +68,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EAB308',
     backgroundColor: 'none',
-    paddingVertical: 18,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     marginBottom: 12,
     shadowColor: '#EAB308',
@@ -81,7 +81,7 @@ const s = StyleSheet.create({
   pillText: {
     color: '#F3F4F6',
     fontFamily: 'Antonio_700Bold',
-    fontSize: 18,
+    fontSize: 16,
     lineHeight: 26,
   },
 
