@@ -1,10 +1,11 @@
 // src/screens/DashboardScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image, ImageBackground, Modal, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { useResponsive } from '../ui/responsive';
+import ProgressBlock from '../components/ProgressBlock';
 
 // Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -27,7 +28,6 @@ const normalizeCurriculum = (value: any): string => {
   if (raw.includes('ieb')) return 'IEB';
   if (raw.includes('cambridge')) return 'Cambridge';
   if (raw.includes('international baccalaureate') || raw === 'ib' || /\bib\b/.test(raw)) return 'IB';
-  // fallback: first token upper (e.g., "nsc" -> "NSC")
   return raw.split(' ')[0].toUpperCase();
 };
 
@@ -117,8 +117,8 @@ export default function DashboardScreen() {
         }
       } catch {
         const fallback =
-          getFirst(user.displayName) ||
-          getFirst(user.email) ||
+          getFirst((getAuth().currentUser?.displayName) || '') ||
+          getFirst((getAuth().currentUser?.email) || '') ||
           '';
         setFirstName(fallback);
       }
@@ -249,28 +249,47 @@ export default function DashboardScreen() {
           {/* 🔵 END TOP-RIGHT BLUE BLOCKS */}
 
           <View style={s.cardInner}>
-            <ScrollView contentContainerStyle={s.scroll}>
-              <Image
-                source={require('../../assets/swoosh-yellow.png')}
-                style={[s.swoosh, { left: swooshLeft }]}
-                resizeMode="contain"
-              />
+            {/* no outer ScrollView: the page is static */}
+            <Image
+              source={require('../../assets/swoosh-yellow.png')}
+              style={[s.swoosh, { left: swooshLeft }]}
+              resizeMode="contain"
+            />
 
-              <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
+            <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
 
-              <Text
-                style={s.heading}
-                onLayout={(e) => {
-                  const { x, width } = e.nativeEvent.layout;
-                  setHeadingX(x);
-                  setHeadingW(width);
-                }}
+            <Text
+              style={s.heading}
+              onLayout={(e) => {
+                const { x, width } = e.nativeEvent.layout;
+                setHeadingX(x);
+                setHeadingW(width);
+              }}
+            >
+              {headingText}
+            </Text>
+
+            <Text style={s.sub}>Ready to learn today?</Text>
+
+            {/* Scrollable block */}
+            <View style={s.bigBlock}>
+              <ScrollView
+                style={s.bigBlockScroll}
+                contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
+                showsVerticalScrollIndicator
               >
-                {headingText}
-              </Text>
-
-              <Text style={s.sub}>Ready to learn today?</Text>
-            </ScrollView>
+                <ProgressBlock
+                  stats={{
+                    summariesStudied: 15,
+                    chaptersCovered: 25,
+                    quizzesDone: 20,
+                    testsCompleted: 40,
+                  }}
+                />
+                
+              </ScrollView>
+            </View>
+            {/* Scrollable block */}
           </View>
         </ImageBackground>
       </View>
@@ -418,7 +437,7 @@ const s = StyleSheet.create({
     marginLeft: 8,
   },
 
-  // 🧩 Modal dropdown (matches SignUp Select look)
+  // Modal dropdown 
   ddBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -448,11 +467,12 @@ const s = StyleSheet.create({
   },
   cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
-  scroll: { paddingBottom: 44 },
+  // removed outer ScrollView to stop page scrolling
+  // scroll: { paddingBottom: 44 },
 
   swoosh: {
     position: 'absolute',
-    top: 0,
+    top: 25,
     width: SWOOSH_W,
     height: 90,
     transform: [{ rotateZ: '-2deg' }],
@@ -461,9 +481,9 @@ const s = StyleSheet.create({
   },
   dot: {
     position: 'absolute',
-    top: 50,
-    left: -8,
-    height: '35%',
+    top: 80,
+    left: 10,
+    height: '7%',
     zIndex: 1,
     opacity: 0.95,
   },
@@ -490,6 +510,38 @@ const s = StyleSheet.create({
     marginTop: -10,
     opacity: 0.95,
     zIndex: 2,
+  },
+
+  // Scrollable block
+  bigBlock: {
+    backgroundColor: 'none',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 25,
+    marginLeft: -20,
+    marginRight: -40,
+    height: 580,              // adjust to taste
+    alignSelf: 'stretch',
+    overflow: 'hidden',       // <-- IMPORTANT: clips content as it scrolls out
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  bigBlockScroll: { flex: 1 },
+  bigBlockText: {
+    color: '#111827',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 18,
+    marginBottom: 8,
+  },
+  bigBlockItem: {
+    color: '#111827',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 16,
+    opacity: 0.85,
+    marginBottom: 6,
   },
 
   cornerLogo: {
