@@ -13,10 +13,45 @@ import { db } from '../../firebase';
 
 const SWOOSH_W = 380; // must match s.swoosh.width
 
+// Fallback subjects if profile has none
+const DEFAULT_SUBJECTS = [
+  'Mathematics', 'Mathematical Literacy', 'Physical Sciences', 'Life Sciences',
+  'Geography', 'History', 'Accounting', 'Business Studies', 'Economics',
+];
+
+// --- helpers: keep changes minimal ---
+const normalizeCurriculum = (value: any): string => {
+  const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
+  if (!raw) return 'CAPS'; // sensible default
+  if (raw.includes('caps')) return 'CAPS';
+  if (raw.includes('ieb')) return 'IEB';
+  if (raw.includes('cambridge')) return 'Cambridge';
+  if (raw.includes('international baccalaureate') || raw === 'ib' || /\bib\b/.test(raw)) return 'IB';
+  // fallback: first token upper (e.g., "nsc" -> "NSC")
+  return raw.split(' ')[0].toUpperCase();
+};
+
+const titleCase = (s: any): string =>
+  String(s ?? '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ');
+// -------------------------------------
+
 export default function DashboardScreen() {
   const [firstName, setFirstName] = useState<string>('');
   const [headingW, setHeadingW] = useState(0);
   const [headingX, setHeadingX] = useState(0);
+
+  // 🔵 Top-right blocks state
+  const [curriculum, setCurriculum] = useState<string>('CAPS');
+  const [grade, setGrade] = useState<number | string>('12');
+  const [subject, setSubject] = useState<string>('Mathematics');
+  const [showSubjectDrop, setShowSubjectDrop] = useState(false);
+  const [subjects, setSubjects] = useState<string[]>(DEFAULT_SUBJECTS);
+
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const R = useResponsive();
 
@@ -37,15 +72,49 @@ export default function DashboardScreen() {
       }
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
-        const profileFullName = snap.exists() ? (snap.data()?.fullName as string | undefined) : undefined;
+        const profile = snap.exists() ? (snap.data() as any) : undefined;
 
+        const profileFullName: string | undefined = profile?.fullName;
         const name =
           getFirst(profileFullName) ||
           getFirst(user.displayName) ||
           getFirst(user.email) ||
           '';
-
         setFirstName(name);
+
+        // Curriculum (abbreviate)
+        if (profile?.curriculum) {
+          setCurriculum(normalizeCurriculum(profile.curriculum));
+        }
+
+        // Grade
+        if (profile?.grade) setGrade(profile.grade);
+
+        // Subjects list (only show what user signed up for)
+        const signedUpSubjects: any[] =
+          profile?.subjects ||
+          profile?.selectedSubjects ||
+          profile?.subjectsChosen ||
+          [];
+
+        if (Array.isArray(signedUpSubjects) && signedUpSubjects.length > 0) {
+          const cleaned = signedUpSubjects.map(titleCase).filter(Boolean);
+          setSubjects(cleaned);
+          if (profile?.subject) {
+            const chosen = titleCase(profile.subject);
+            setSubject(cleaned.includes(chosen) ? chosen : cleaned[0]);
+          } else {
+            setSubject(cleaned[0]);
+          }
+        } else {
+          // Fallback to defaults
+          setSubjects(DEFAULT_SUBJECTS);
+          if (profile?.subject && DEFAULT_SUBJECTS.includes(titleCase(profile.subject))) {
+            setSubject(titleCase(profile.subject));
+          } else {
+            setSubject(DEFAULT_SUBJECTS[0]);
+          }
+        }
       } catch {
         const fallback =
           getFirst(user.displayName) ||
@@ -62,7 +131,6 @@ export default function DashboardScreen() {
     : 'WELCOME BACK';
 
   // Exact center alignment: center(swoosh) = center(text)
-  // left = textX + textW/2 - swooshW/2
   const swooshLeft =
     headingW > 0 ? (headingX + headingW / 2) - (SWOOSH_W / 2) - 30 : '20%';
 
@@ -115,6 +183,53 @@ export default function DashboardScreen() {
               <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
             </Pressable>
           </View>
+
+          {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
+          <View style={s.topRightWrap}>
+          <View style={s.row}>
+            {/* Curriculum pill */}
+            <View style={[s.pill, s.curriculumPill]}>
+              <Text style={s.pillTop}>CURRICULUM</Text>
+              <Text style={s.pillMain}>{String(curriculum).toUpperCase()}</Text>
+            </View>
+
+            {/* Grade pill */}
+            <View style={[s.pill, s.gradePill]}>
+              <Text style={s.pillTop}>GRADE</Text>
+              <Text style={s.pillMain}>{String(grade).toUpperCase()}</Text>
+            </View>
+          </View>
+
+          {/* Subject dropdown (only user's subjects) */}
+          <View style={[s.pill, s.subjectPill]}>
+            <Pressable
+              onPress={() => setShowSubjectDrop(v => !v)}
+              hitSlop={6}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <View>
+                <Text style={s.pillTop}>SUBJECT</Text>
+                <Text style={s.pillMain}>{subject}</Text>
+              </View>
+              <Text style={s.chev}>{showSubjectDrop ? '▴' : '▾'}</Text>
+            </Pressable>
+
+            {showSubjectDrop && (
+              <View style={s.dropdown}>
+                {subjects.map((subj) => (
+                  <Pressable
+                    key={subj}
+                    onPress={() => { setSubject(subj); setShowSubjectDrop(false); }}
+                    style={s.dropItem}
+                  >
+                    <Text style={s.dropTxt}>{subj}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+          {/* 🔵 END TOP-RIGHT BLUE BLOCKS */}
 
           <View style={s.cardInner}>
             <ScrollView contentContainerStyle={s.scroll}>
@@ -215,6 +330,103 @@ const s = StyleSheet.create({
     position: 'relative',
     zIndex: 1,
   },
+
+  // 🔵 top-right container (inside the card)
+  topRightWrap: {
+    position: 'absolute',
+    top: 22,
+    right: 26,
+    zIndex: 6,
+    width: 360,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 14,
+    marginBottom: 14,
+    justifyContent: 'flex-end',
+    marginTop: 15,
+  },
+  pill: {
+    flexGrow: 1,
+    backgroundColor: '#2763F6',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  curriculumPill: {
+  flexGrow: 0,
+  width: 135,  
+  paddingVertical: 10,
+  height: 55,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+gradePill: {
+  flexGrow: 0,
+  width: 110,
+  paddingVertical: 10,
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: 55,
+},
+  subjectPill: { 
+    flexGrow: 0,
+    width: 260,
+    paddingVertical: 10,
+    alignSelf: 'flex-end',
+    justifyContent: 'center',
+    height: 55,
+   },
+  pillTop: {
+    color: 'rgba(255,255,255,0.85)',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  pillMain: {
+    color: '#FFFFFF',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 18,
+    letterSpacing: 0.3,
+    marginTop: 2,
+  },
+  chev: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    marginLeft: 8,
+  },
+  dropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#1F2937',
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+    overflow: 'hidden',
+    marginTop: 6,
+    zIndex: 10,
+    elevation: 6,
+  },
+  dropItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  dropTxt: {
+    color: '#E5E7EB',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 16,
+  },
+
   cardInner: {
     flex: 1,
     borderRadius: 40,
@@ -222,10 +434,7 @@ const s = StyleSheet.create({
     marginLeft: 210,
     marginRight: 14,
   },
-  cardImage: {
-    borderRadius: 40,
-    resizeMode: 'cover',
-  },
+  cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
   scroll: { paddingBottom: 44 },
 
