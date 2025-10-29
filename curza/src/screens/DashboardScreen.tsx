@@ -1,6 +1,6 @@
 // src/screens/DashboardScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
@@ -186,49 +186,66 @@ export default function DashboardScreen() {
 
           {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
-          <View style={s.row}>
-            {/* Curriculum pill */}
-            <View style={[s.pill, s.curriculumPill]}>
-              <Text style={s.pillTop}>CURRICULUM</Text>
-              <Text style={s.pillMain}>{String(curriculum).toUpperCase()}</Text>
+            <View style={s.row}>
+              {/* Curriculum pill */}
+              <View style={[s.pill, s.curriculumPill]}>
+                <Text style={s.pillTop}>CURRICULUM</Text>
+                <Text style={s.pillMain}>{String(curriculum).toUpperCase()}</Text>
+              </View>
+
+              {/* Grade pill */}
+              <View style={[s.pill, s.gradePill]}>
+                <Text style={s.pillTop}>GRADE</Text>
+                <Text style={s.pillMain}>{String(grade).toUpperCase()}</Text>
+              </View>
             </View>
 
-            {/* Grade pill */}
-            <View style={[s.pill, s.gradePill]}>
-              <Text style={s.pillTop}>GRADE</Text>
-              <Text style={s.pillMain}>{String(grade).toUpperCase()}</Text>
+            {/* Subject pill (button unchanged) */}
+            <View style={[s.pill, s.subjectPill]}>
+              <Pressable
+                onPress={() => setShowSubjectDrop(true)}
+                hitSlop={6}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <View>
+                  <Text style={s.pillTop}>SUBJECT</Text>
+                  <Text style={s.pillMain}>{subject}</Text>
+                </View>
+                <Text style={s.chev}>▾</Text>
+              </Pressable>
+
+              {/* ⚪ Modal options panel matching SignUp Select */}
+              <Modal
+                transparent
+                visible={showSubjectDrop}
+                animationType="fade"
+                onRequestClose={() => setShowSubjectDrop(false)}
+              >
+                <View style={s.ddBackdrop}>
+                  <View style={s.ddSheet}>
+                    <Text style={s.ddTitle}>Select Subject</Text>
+                    <ScrollView style={{ maxHeight: 340 }}>
+                      {subjects.map((subj) => (
+                        <Pressable
+                          key={subj}
+                          style={s.ddRow}
+                          onPress={() => {
+                            setSubject(subj);
+                            setShowSubjectDrop(false);
+                          }}
+                        >
+                          <Text style={s.ddRowText}>{subj}</Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                    <Pressable style={s.ddCancel} onPress={() => setShowSubjectDrop(false)}>
+                      <Text style={s.ddCancelText}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </Modal>
             </View>
           </View>
-
-          {/* Subject dropdown (only user's subjects) */}
-          <View style={[s.pill, s.subjectPill]}>
-            <Pressable
-              onPress={() => setShowSubjectDrop(v => !v)}
-              hitSlop={6}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-            >
-              <View>
-                <Text style={s.pillTop}>SUBJECT</Text>
-                <Text style={s.pillMain}>{subject}</Text>
-              </View>
-              <Text style={s.chev}>{showSubjectDrop ? '▴' : '▾'}</Text>
-            </Pressable>
-
-            {showSubjectDrop && (
-              <View style={s.dropdown}>
-                {subjects.map((subj) => (
-                  <Pressable
-                    key={subj}
-                    onPress={() => { setSubject(subj); setShowSubjectDrop(false); }}
-                    style={s.dropItem}
-                  >
-                    <Text style={s.dropTxt}>{subj}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-        </View>
           {/* 🔵 END TOP-RIGHT BLUE BLOCKS */}
 
           <View style={s.cardInner}>
@@ -359,29 +376,29 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
   },
   curriculumPill: {
-  flexGrow: 0,
-  width: 135,  
-  paddingVertical: 10,
-  height: 55,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-gradePill: {
-  flexGrow: 0,
-  width: 110,
-  paddingVertical: 10,
-  alignItems: 'center',
-  justifyContent: 'center',
-  height: 55,
-},
-  subjectPill: { 
+    flexGrow: 0,
+    width: 135,
+    paddingVertical: 10,
+    height: 55,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gradePill: {
+    flexGrow: 0,
+    width: 110,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 55,
+  },
+  subjectPill: {
     flexGrow: 0,
     width: 260,
     paddingVertical: 10,
     alignSelf: 'flex-end',
     justifyContent: 'center',
     height: 55,
-   },
+  },
   pillTop: {
     color: 'rgba(255,255,255,0.85)',
     fontFamily: 'AlumniSans_500Medium',
@@ -400,32 +417,27 @@ gradePill: {
     fontSize: 18,
     marginLeft: 8,
   },
-  dropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: '#1F2937',
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-    overflow: 'hidden',
-    marginTop: 6,
-    zIndex: 10,
-    elevation: 6,
+
+  // 🧩 Modal dropdown (matches SignUp Select look)
+  ddBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
   },
-  dropItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+  ddSheet: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
   },
-  dropTxt: {
-    color: '#E5E7EB',
-    fontFamily: 'AlumniSans_500Medium',
-    fontSize: 16,
-  },
+  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
+  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
+  ddRowText: { fontSize: 16, color: '#1F2937' },
+  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
+  ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
 
   cardInner: {
     flex: 1,
