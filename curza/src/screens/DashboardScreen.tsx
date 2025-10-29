@@ -512,9 +512,9 @@ const s = StyleSheet.create({
 
   swoosh: {
     position: 'absolute',
-    top: 25,
+    top: 20,
     width: SWOOSH_W,
-    height: 90,
+    height: 100,
     transform: [{ rotateZ: '-2deg' }],
     opacity: 0.9,
     zIndex: 2,
@@ -557,7 +557,7 @@ const s = StyleSheet.create({
     backgroundColor: 'none',
     borderRadius: 16,
     padding: 16,
-    marginTop: 20,
+    marginTop: 30,
     marginLeft: -20,
     marginRight: -40,
     height: 620,              // adjust to taste

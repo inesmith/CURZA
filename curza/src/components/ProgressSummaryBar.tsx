@@ -15,7 +15,7 @@ const s = StyleSheet.create({
   wrap: {
     backgroundColor: '#2563EB', // bright blue (matches your mock)
     borderRadius: 18,
-    paddingVertical: 20,
+    paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',

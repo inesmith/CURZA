@@ -1,6 +1,6 @@
 // src/screens/SummariesScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image, ImageBackground, Modal, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
@@ -8,10 +8,16 @@ import type { RootStackParamList } from '../../App';
 // AI callables (no UI changes required)
 import { summarizeAI, buildQuizAI } from '../../firebase';
 
-// 🔵 Firebase (to read user curriculum/grade/subjects)
+// Firebase (to read user curriculum/grade/subjects)
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
+
+// Content
+import KeyConceptsCard from '../components/KeyConceptsCard';
+import FormulasCard from '../components/FormulasCard';
+import ExampleSection from '../components/ExampleSection';
+import TipBoxCard from '../components/TipBoxCard';
 
 export default function SummariesScreen() {
   const [centre, setCentre] = useState(false);
@@ -25,6 +31,9 @@ export default function SummariesScreen() {
   const [subject, setSubject] = useState<string>('Mathematics');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
   const [subjects, setSubjects] = useState<string[]>([]); // only user’s subjects
+
+  const [chapter, setChapter] = useState<string>('Chapter 1');
+  const [showChapterDrop, setShowChapterDrop] = useState(false);
 
   // Minimal helpers (same logic as on Dashboard)
   const normalizeCurriculum = (value: any): string => {
@@ -44,6 +53,15 @@ export default function SummariesScreen() {
       .split(/\s+/)
       .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
+
+  // 🔹 NEW: insert a line break after the 2nd word (no size/layout changes)
+  const formatSubjectTwoLine = (name: string) => {
+    const parts = String(name || '').trim().split(/\s+/);
+    if (parts.length <= 2) return name; // 1–2 words: unchanged
+    const first = parts.slice(0, 2).join(' ');
+    const rest = parts.slice(2).join(' ');
+    return `${first}\n${rest}`;
+  };
 
   // Pull profile (curriculum/grade/subjects)
   useEffect(() => {
@@ -183,77 +201,172 @@ export default function SummariesScreen() {
             </Pressable>
           </View>
 
-          {/* 🔵 TOP-RIGHT BLUE BLOCKS (same look/placement as Dashboard) */}
+          {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
+            {/* Row 1: Curriculum + Grade (UNCHANGED) */}
             <View style={s.row}>
-              {/* Curriculum pill */}
               <View style={[s.pill, s.curriculumPill]}>
                 <Text style={s.pillTop}>CURRICULUM</Text>
                 <Text style={s.pillMain}>{String(curriculum).toUpperCase()}</Text>
               </View>
 
-              {/* Grade pill */}
               <View style={[s.pill, s.gradePill]}>
                 <Text style={s.pillTop}>GRADE</Text>
                 <Text style={s.pillMain}>{String(grade).toUpperCase()}</Text>
               </View>
             </View>
 
-            {/* Subject dropdown (button unchanged, options use modal like SignUp) */}
-            <View style={[s.pill, s.subjectPill]}>
-              <Pressable
-                onPress={() => setShowSubjectDrop(true)}
-                hitSlop={6}
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <View>
-                  <Text style={s.pillTop}>SUBJECT</Text>
-                  <Text style={s.pillMain}>{subject}</Text>
-                </View>
-                <Text style={s.chev}>▾</Text>
-              </Pressable>
+            {/* Row 2: Subject + Chapter (side-by-side, same look) */}
+            <View style={s.row2}>
+              {/* Subject dropdown (unchanged look, now with 2-line formatting) */}
+              <View style={[s.pill, s.selectPill3]}>
+                <Pressable
+                  onPress={() => setShowSubjectDrop(true)}
+                  hitSlop={6}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                >
+                  <Text style={[s.pillMain, s.subjectTextSmall]}>
+                    {formatSubjectTwoLine(subject)}
+                  </Text>
+                  <Text style={s.chev}>▾</Text>
+                </Pressable>
+              </View>
 
-              {/* ⚪ Modal options panel matching SignUp Select */}
-              <Modal
-                transparent
-                visible={showSubjectDrop}
-                animationType="fade"
-                onRequestClose={() => setShowSubjectDrop(false)}
-              >
-                <View style={s.ddBackdrop}>
-                  <View style={s.ddSheet}>
-                    <Text style={s.ddTitle}>Select Subject</Text>
-                    <ScrollView style={{ maxHeight: 340 }}>
-                      {subjects.map((subj) => (
-                        <Pressable
-                          key={subj}
-                          style={s.ddRow}
-                          onPress={() => {
-                            setSubject(subj);
-                            setShowSubjectDrop(false);
-                          }}
-                        >
-                          <Text style={s.ddRowText}>{subj}</Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                    <Pressable style={s.ddCancel} onPress={() => setShowSubjectDrop(false)}>
-                      <Text style={s.ddCancelText}>Cancel</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </Modal>
+              {/* Chapter dropdown (matches subject’s look) */}
+              <View style={[s.pill, s.selectPill2]}>
+                <Pressable
+                  onPress={() => setShowChapterDrop(true)}
+                  hitSlop={6}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                >
+                  <Text style={[s.pillMain, s.subjectTextSmall]}>{chapter}</Text>
+                  <Text style={s.chev}>▾</Text>
+                </Pressable>
+              </View>
             </View>
+
+            {/* Subject modal */}
+            <Modal
+              transparent
+              visible={showSubjectDrop}
+              animationType="fade"
+              onRequestClose={() => setShowSubjectDrop(false)}
+            >
+              <View style={s.ddBackdrop}>
+                <View style={s.ddSheet}>
+                  <Text style={s.ddTitle}>Select Subject</Text>
+                  <ScrollView style={{ maxHeight: 340 }}>
+                    {subjects.map((subj) => (
+                      <Pressable
+                        key={subj}
+                        style={s.ddRow}
+                        onPress={() => {
+                          setSubject(subj);
+                          setShowSubjectDrop(false);
+                        }}
+                      >
+                        <Text style={s.ddRowText}>{subj}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                  <Pressable style={s.ddCancel} onPress={() => setShowSubjectDrop(false)}>
+                    <Text style={s.ddCancelText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </Modal>
+
+            {/* Chapter modal */}
+            <Modal
+              transparent
+              visible={showChapterDrop}
+              animationType="fade"
+              onRequestClose={() => setShowChapterDrop(false)}
+            >
+              <View style={s.ddBackdrop}>
+                <View style={s.ddSheet}>
+                  <Text style={s.ddTitle}>Select Chapter</Text>
+                  <ScrollView style={{ maxHeight: 340 }}>
+                    {['Chapter 1', 'Chapter 2', 'Chapter 3', 'Chapter 4', 'Chapter 5'].map((ch) => (
+                      <Pressable
+                        key={ch}
+                        style={s.ddRow}
+                        onPress={() => {
+                          setChapter(ch);
+                          setShowChapterDrop(false);
+                        }}
+                      >
+                        <Text style={s.ddRowText}>{ch}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                  <Pressable style={s.ddCancel} onPress={() => setShowChapterDrop(false)}>
+                    <Text style={s.ddCancelText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </Modal>
           </View>
           {/* 🔵 END TOP-RIGHT BLUE BLOCKS */}
 
           <View style={s.cardInner}>
-            <ScrollView contentContainerStyle={s.scroll}>
-              <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
-              <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
-              <Text style={s.heading}>SUMMARISE YOUR STUDIES</Text>
-              <Text style={s.sub}>Ready to learn today?</Text>
-            </ScrollView>
+            {/* Static header area — matches Dashboard behavior */}
+            <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
+            <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
+            <Text style={s.heading}>SUMMARISE YOUR STUDIES</Text>
+            <Text style={s.sub}>Ready to learn today?</Text>
+
+            {/* Scrollable block */}
+            <View style={s.bigBlock}>
+              <ScrollView
+                style={s.bigBlockScroll}
+                contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
+                showsVerticalScrollIndicator
+              >
+                {/* Topic bar at top of the scroll box (inline, not a component) */}
+                <View style={s.topicBar}>
+                  <Text style={s.topicText}>ALGEBRA – SIMPLIFYING EXPRESSIONS</Text>
+                </View>
+
+                <View style={s.contentRow}>
+                  <View style={s.leftCol}>
+                    <KeyConceptsCard
+                      concepts={[
+                        'EXPRESSIONS CAN BE SIMPLIFIED BY COMBINING LIKE TERMS.',
+                        'FACTORISATION IS USED TO REWRITE EXPRESSIONS MORE SIMPLY.',
+                        'THE DISTRIBUTIVE PROPERTY: A(B + C) = AB + AC.',
+                      ]}
+                    />
+                    <ExampleSection
+                      exampleSteps={[
+                        'SIMPLIFY: 2X + 3X - 5',
+                        ' = (2 + 3)X - 5',
+                        ' = 5X - 5',
+                      ]}
+                      onGenerateExamples={() => console.log('Generate Examples')}
+                      onDownloadSummary={() => console.log('Download Summary')}
+                      onMarkRevised={() => console.log('Mark as Revised')}
+                    />
+                  </View>
+                  <View style={s.rightCol}>
+                    <FormulasCard
+                      formulas={[
+                        '(X + Y)² = X² + 2XY + Y²',
+                        '(X - Y)² = X² - 2XY + Y²',
+                        '(X + A)(X + B) = X² + (A + B)X + AB',
+                      ]}
+                    />
+                    <TipBoxCard
+                      tips={[
+                        'ALWAYS GROUP LIKE TERMS BEFORE YOU FACTORISE.',
+                        'EXAMS USUALLY GIVE 1 MARK FOR WRITING THE THEOREM IN GEOMETRY PROOFS.',
+                        'COMMON MISTAKE: FORGETTING TO SIMPLIFY FRACTIONS AT THE LAST STEP.',
+                      ]}
+                    />
+                  </View>
+                </View>
+              </ScrollView>
+            </View>
           </View>
         </ImageBackground>
       </View>
@@ -309,7 +422,7 @@ const s = StyleSheet.create({
   },
   dashboardTab:   { fontWeight: 'bold', marginTop: -115 },
   summariesTab:   { opacity: 0.9, marginTop: -15 },
-  summariesActive:{ opacity: 1, marginTop: -15, fontWeight: '800', color: '#FACC15' }, // active look
+  summariesActive:{ opacity: 1, marginTop: -15, fontWeight: '800', color: '#FACC15' },
   practiseTab:    { opacity: 0.8, marginTop: 20 },
   resultsTab:     { opacity: 0.8, marginTop: 45 },
   profileTab:     { opacity: 0.8, marginTop: 72 },
@@ -322,14 +435,13 @@ const s = StyleSheet.create({
     width: '100%',
     zIndex: 1,
   },
-  // The “different-looking” summaries rail when dropdown open
   dropTab: {
     position: 'absolute',
     height: '100%',
     width: '100%',
     top: 0,
     left: 0,
-    zIndex: 5, // above base rail art, below labels
+    zIndex: 5,
   },
 
   // Main card
@@ -338,7 +450,7 @@ const s = StyleSheet.create({
     borderRadius: 40,
     overflow: 'hidden',
     position: 'relative',
-    zIndex: 2, // card is above rail art
+    zIndex: 2,
   },
 
   // 🔵 top-right container (inside the card)
@@ -349,12 +461,21 @@ const s = StyleSheet.create({
     zIndex: 7,
     width: 360,
   },
+  subjectTextSmall: {
+    fontSize: 15,
+  },
   row: {
     flexDirection: 'row',
     gap: 14,
     marginBottom: 14,
     justifyContent: 'flex-end',
     marginTop: 15,
+  },
+  row2: {
+    flexDirection: 'row',
+    gap: 14,
+    justifyContent: 'flex-end',
+    marginTop: 0,
   },
   pill: {
     flexGrow: 1,
@@ -384,7 +505,31 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     height: 55,
   },
-  subjectPill: {
+
+  // 🔹 New: small selector pill used for Subject + Chapter (side-by-side)
+  selectPill: {
+    flexGrow: 0,
+    width: 170,   
+    height: 55,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectPill2: {
+    flexGrow: 0,
+    width: 105,   
+    height: 55,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectPill3: {
+    flexGrow: 0,
+    width: 140,   
+    height: 55,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  subjectPill: {        
     flexGrow: 0,
     width: 260,
     paddingVertical: 10,
@@ -392,6 +537,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     height: 55,
   },
+
   pillTop: {
     color: 'rgba(255,255,255,0.85)',
     fontFamily: 'AlumniSans_500Medium',
@@ -411,7 +557,7 @@ const s = StyleSheet.create({
     marginLeft: 8,
   },
 
-  // 🧩 Modal dropdown (matches SignUp Select look)
+  // Dropdowns
   ddBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -435,23 +581,21 @@ const s = StyleSheet.create({
   cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
   cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
-  scroll: { paddingBottom: 44 },
-
   swoosh: {
     position: 'absolute',
-    top: 10,
+    top: 30,
     left: '-8%',
     width: 380,
-    height: 90,
+    height: 100,
     transform: [{ rotateZ: '-2deg' }],
     opacity: 0.9,
     zIndex: 3,
   },
   dot: {
     position: 'absolute',
-    top: 50,
-    left: 420,
-    height: '35%',
+    top: 70,
+    left: 450,
+    height: '7%',
     zIndex: 2,
     opacity: 0.95,
   },
@@ -480,6 +624,25 @@ const s = StyleSheet.create({
     zIndex: 3,
   },
 
+  // Scrollable block 
+  bigBlock: {
+    backgroundColor: 'none',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 30,
+    marginLeft: -20,
+    marginRight: -40,
+    height: 620,
+    alignSelf: 'stretch',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  bigBlockScroll: { flex: 1 },
+
   cornerLogo: {
     position: 'absolute',
     bottom: 40,
@@ -488,4 +651,44 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 10,
   },
+
+  topicBar: {
+    backgroundColor: '#6B7280',
+    borderRadius: 22,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignSelf: 'stretch',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+
+  topicBarText: {
+    color: '#F3F4F6',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 20,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+
+  topicText: {
+    color: '#FFFFFF',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 22,
+    textAlign: 'center',
+    letterSpacing: 0.4,
+  },
+
+  contentRow: { 
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 0,
+  },
+
+  leftCol: { maxWidth: 460, flexShrink: 0 },
+  rightCol: { maxWidth: 460, flexShrink: 0 },
 });
