@@ -5,7 +5,14 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { useResponsive } from '../ui/responsive';
+
+// contents
 import ProgressBlock from '../components/ProgressBlock';
+import ToDoBlock, { TodoItem } from '../components/ToDoBlock';
+import ProgressSummaryBar from '../components/ProgressSummaryBar';
+import UpcomingTestsCard from '../components/UpcomingTestsCard';
+import FeedbackCard from '../components/FeedbackCard';
+import RecentActivitiesCard from '../components/RecentActivitiesCard';
 
 // Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -39,6 +46,12 @@ const titleCase = (s: any): string =>
     .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
     .join(' ');
 // -------------------------------------
+
+const todos: TodoItem[] = [
+  { id: '1', text: 'REVISE TRIGONOMETRY' },
+  { id: '2', text: 'PRACTISE MONKEY PUZZLES IN TESTS' },
+  { id: '3', text: 'COMPLETE 3 PRACTISE TESTS' },
+];
 
 export default function DashboardScreen() {
   const [firstName, setFirstName] = useState<string>('');
@@ -278,15 +291,42 @@ export default function DashboardScreen() {
                 contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
                 showsVerticalScrollIndicator
               >
-                <ProgressBlock
-                  stats={{
-                    summariesStudied: 15,
-                    chaptersCovered: 25,
-                    quizzesDone: 20,
-                    testsCompleted: 40,
-                  }}
-                />
-                
+                <View style={s.contentRow}>
+                  {/* LEFT: progress + blue summary bar */}
+                  <View style={s.leftCol}>
+                    <ProgressBlock
+                      stats={{ summariesStudied: 15, chaptersCovered: 25, quizzesDone: 20, testsCompleted: 40 }}
+                    />
+                    <View style={{ marginTop: 0,}}>
+                      <ProgressSummaryBar text="YOU HAVE COMPLETED 4/12 MATH TOPICS" />
+                    </View>
+                    {/* two cards row */}
+                    <View style={s.smallCardsRow}>
+                      <UpcomingTestsCard onStart={() => console.log('Start suggested test')} />
+                      <FeedbackCard
+                        areas={['FRACTIONS', 'ALGEBRA']}
+                        onView={() => console.log('Open feedback')}
+                      />
+                    </View>
+                  </View>
+
+                  {/* RIGHT: To-Do list + Recent Activities (stacked) */}
+                  <View style={s.rightCol}>
+                    <ToDoBlock
+                      items={todos}
+                      onAdd={() => console.log('Add a new to-do')}
+                    />
+                    <View style={s.recentSpacer}>
+                      <RecentActivitiesCard
+                        items={[
+                          { id: 'a1', text: 'COMPLETED ALGEBRA TEST', score: 65, showArrow: true },
+                          { id: 'a2', text: 'READ GEOMETRY SUMMARY - CHAPTER 4' },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                </View>
+
               </ScrollView>
             </View>
             {/* Scrollable block */}
@@ -517,12 +557,12 @@ const s = StyleSheet.create({
     backgroundColor: 'none',
     borderRadius: 16,
     padding: 16,
-    marginTop: 25,
+    marginTop: 20,
     marginLeft: -20,
     marginRight: -40,
-    height: 580,              // adjust to taste
+    height: 620,              // adjust to taste
     alignSelf: 'stretch',
-    overflow: 'hidden',       // <-- IMPORTANT: clips content as it scrolls out
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -544,6 +584,24 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
 
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start', // keeps top edges aligned
+    gap: 12,
+  },
+
+  leftCol: {
+    maxWidth: 430, // matches your ProgressBlock width
+    flexShrink: 0,
+  },
+
+  // NEW: wrapper so RecentActivities sits directly under To-Do
+  rightCol: {
+    maxWidth: 520,
+    flexShrink: 1,
+    alignSelf: 'stretch',
+  },
+
   cornerLogo: {
     position: 'absolute',
     bottom: 40,
@@ -552,4 +610,15 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 10,
   },
+
+  smallCardsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+
+  recentSpacer: {
+    marginTop: 12, // nudge it down; tweak 12–20 to taste
+  },
+
 });
