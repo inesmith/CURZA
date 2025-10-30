@@ -1,28 +1,40 @@
 // src/screens/ResultsScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ImageBackground,
+  Modal,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-// 🔵 Firebase (for user profile values)
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
+type ResultRow = { id: string; paper: string; date: string; score: string; showArrow?: boolean };
+
+const SAMPLE_RESULTS: ResultRow[] = [
+  { id: 'r1', paper: 'MATHEMATICS P1', date: '22 SEPTEMBER 2025', score: '72%', showArrow: true },
+  { id: 'r2', paper: 'MATHEMATICS P1', date: '22 SEPTEMBER 2025', score: '60%', showArrow: true },
+  { id: 'r3', paper: 'MATHEMATICS P1', date: '22 SEPTEMBER 2025', score: '54%', showArrow: true },
+];
+
 export default function ResultsScreen() {
-  const [centre, setCentre] = useState(false);
-  const [terms, setTerms] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
-  // 🔵 Top-right info
   const [curriculum, setCurriculum] = useState('CAPS');
   const [grade, setGrade] = useState<number | string>('12');
   const [subject, setSubject] = useState('Mathematics');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
   const [subjects, setSubjects] = useState<string[]>([]);
 
-  // helpers (same behavior as other screens)
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
     if (!raw) return 'CAPS';
@@ -37,7 +49,7 @@ export default function ResultsScreen() {
       .replace(/[_-]+/g, ' ')
       .trim()
       .split(/\s+/)
-      .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
 
   useEffect(() => {
@@ -62,9 +74,7 @@ export default function ResultsScreen() {
             setSubject(cleaned[0]);
           }
         }
-      } catch {
-        // ignore errors; keep defaults
-      }
+      } catch {}
     });
     return () => unsub();
   }, []);
@@ -72,32 +82,32 @@ export default function ResultsScreen() {
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left rail artwork (make them NOT capture touches) */}
+        {/* Left rail artwork */}
         <Image source={require('../../assets/DashboardTab.png')}  style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/SummariesTab.png')} style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/PractiseTab.png')}   style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/ProfileTab.png')}   style={s.tab} resizeMode="contain" />
 
-        {/* Clickable text labels, each with its own position */}
-        <View style={[s.tabTextWrapper, s.posSummaries]}>
+        {/* Left rail labels (RESULTS above PROFILE to avoid mis-tap) */}
+        <View style={[s.tabTextWrapper, s.posSummaries, { zIndex: 6 }]}>
           <Pressable onPress={() => navigation.navigate('Summaries')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
             <Text style={[s.tabText, s.summariesTab]}>SUMMARIES</Text>
           </Pressable>
         </View>
 
-        <View style={[s.tabTextWrapper, s.posPractice]}>
+        <View style={[s.tabTextWrapper, s.posPractice, { zIndex: 6 }]}>
           <Pressable onPress={() => navigation.navigate('PracticeTests')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
             <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
           </Pressable>
         </View>
 
-        <View style={[s.tabTextWrapper, s.posResults]}>
+        <View style={[s.tabTextWrapper, s.posResults, { zIndex: 7 }]}>
           <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
             <Text style={[s.tabText, s.resultsTab]}>RESULTS</Text>
           </Pressable>
         </View>
 
-        <View style={[s.tabTextWrapper, s.posProfile]}>
+        <View style={[s.tabTextWrapper, s.posProfile, { zIndex: 5 }]}>
           <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
             <Text style={[s.tabText, s.profileTab]}>PROFILE & SETTINGS</Text>
           </Pressable>
@@ -119,23 +129,19 @@ export default function ResultsScreen() {
             </Pressable>
           </View>
 
-          {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
+          {/* 🔵 Top-right pills */}
           <View style={s.topRightWrap}>
             <View style={s.row}>
-              {/* Curriculum pill (size editable via curriculumPill) */}
               <View style={[s.pill, s.curriculumPill]}>
                 <Text style={s.pillTop}>CURRICULUM</Text>
                 <Text style={s.pillMain}>{String(curriculum).toUpperCase()}</Text>
               </View>
-
-              {/* Grade pill (size editable via gradePill) */}
               <View style={[s.pill, s.gradePill]}>
                 <Text style={s.pillTop}>GRADE</Text>
                 <Text style={s.pillMain}>{String(grade).toUpperCase()}</Text>
               </View>
             </View>
 
-            {/* Subject dropdown (button unchanged, options in modal like SignUp) */}
             <View style={[s.pill, s.subjectPill]}>
               <Pressable
                 onPress={() => setShowSubjectDrop(true)}
@@ -149,26 +155,13 @@ export default function ResultsScreen() {
                 <Text style={s.chev}>▾</Text>
               </Pressable>
 
-              {/* ⚪ Modal options panel matching SignUp Select */}
-              <Modal
-                transparent
-                visible={showSubjectDrop}
-                animationType="fade"
-                onRequestClose={() => setShowSubjectDrop(false)}
-              >
+              <Modal transparent visible={showSubjectDrop} animationType="fade" onRequestClose={() => setShowSubjectDrop(false)}>
                 <View style={s.ddBackdrop}>
                   <View style={s.ddSheet}>
                     <Text style={s.ddTitle}>Select Subject</Text>
                     <ScrollView style={{ maxHeight: 340 }}>
                       {subjects.map((subj) => (
-                        <Pressable
-                          key={subj}
-                          style={s.ddRow}
-                          onPress={() => {
-                            setSubject(subj);
-                            setShowSubjectDrop(false);
-                          }}
-                        >
+                        <Pressable key={subj} style={s.ddRow} onPress={() => { setSubject(subj); setShowSubjectDrop(false); }}>
                           <Text style={s.ddRowText}>{subj}</Text>
                         </Pressable>
                       ))}
@@ -181,14 +174,36 @@ export default function ResultsScreen() {
               </Modal>
             </View>
           </View>
-          {/* 🔵 END TOP-RIGHT BLUE BLOCKS */}
+          {/* 🔵 End pills */}
 
           <View style={s.cardInner}>
-            <ScrollView contentContainerStyle={s.scroll}>
-              <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
-              <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
-              <Text style={s.heading}>YOUR TEST RESULTS</Text>
-            </ScrollView>
+            {/* Fixed header (screen itself not scrollable) */}
+            <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
+            <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
+            <Text style={s.heading}>YOUR TEST RESULTS</Text>
+
+            {/* Scrollable block */}
+            <View style={s.bigBlock}>
+              <ScrollView
+                style={s.bigBlockScroll}
+                contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
+                showsVerticalScrollIndicator
+              >
+                {SAMPLE_RESULTS.map((r) => (
+                  <View key={r.id} style={s.resultRowWrap}>
+                    <Pressable style={s.resultRow} onPress={() => {}}>
+                      <Text style={s.resultPaper}>{r.paper}</Text>
+                      <Text style={s.sep}>·</Text>
+                      <Text style={s.resultDate}>{r.date}</Text>
+                      <Text style={s.sep}>·</Text>
+                      <Text style={s.resultScore}>{r.score}</Text>
+                    </Pressable>
+
+                    {r.showArrow && <View style={s.arrow} />}
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
           </View>
         </ImageBackground>
       </View>
@@ -197,12 +212,8 @@ export default function ResultsScreen() {
 }
 
 const s = StyleSheet.create({
-  page: {
-    flex: 1,
-    backgroundColor: '#0B1220',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  page: { flex: 1, backgroundColor: '#0B1220', justifyContent: 'center', alignItems: 'center' },
+
   imageWrapper: {
     width: '94%',
     height: '95%',
@@ -216,20 +227,12 @@ const s = StyleSheet.create({
     position: 'relative',
   },
 
-  // Base text wrapper (left rail anchor)
-  tabTextWrapper: {
-    position: 'absolute',
-    left: '4.5%',
-    alignItems: 'center',
-    zIndex: 5,
-  },
-
-  // Individual vertical positions
-  posActive:    { top: '15%' },
-  posSummaries: { top: '22%' },
-  posPractice:  { top: '30%' },
-  posResults:   { top: '39%' },
-  posProfile:   { top: '48%' },
+  tabTextWrapper: { position: 'absolute', left: '4.5%', alignItems: 'center' },
+  posActive:      { top: '15%' },
+  posSummaries:   { top: '22%' },
+  posPractice:    { top: '30%' },
+  posResults:     { top: '39%' },
+  posProfile:     { top: '48%' },
 
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
@@ -242,61 +245,20 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-  dashboardTab:  { fontWeight: 'bold', marginTop: -115, },
-  summariesTab:{ opacity: 0.8, marginTop: -15 },
-  practiseTab: { opacity: 0.8, marginTop: 20 },
-  resultsTab:  { opacity: 0.8, marginTop: 45 },
-  profileTab:  { opacity: 0.8, marginTop: 72},
+  dashboardTab:    { fontWeight: 'bold', marginTop: -115 },
+  summariesTab:    { opacity: 0.8, marginTop: -15 },
   practiseOpenTab: { opacity: 0.8, marginTop: 20 },
+  resultsTab:      { opacity: 0.8, marginTop: 45 },
+  profileTab:      { opacity: 0.8, marginTop: 72 },
 
-  // Tab artwork
-  tab: {
-    position: 'absolute',
-    height: '100%',
-    width: '100%',
-    zIndex: 1,
-  },
+  tab: { position: 'absolute', height: '100%', width: '100%', zIndex: 1 },
 
-  // Main card
-  card: {
-    flex: 1,
-    borderRadius: 40,
-    overflow: 'hidden',
-    position: 'relative',
-    zIndex: 1,
-  },
-  cardInner: {
-    flex: 1,
-    borderRadius: 40,
-    padding: 28,
-    marginLeft: 210,
-    marginRight: 14,
-  },
-  cardImage: {
-    borderRadius: 40,
-    resizeMode: 'cover',
-  },
+  card: { flex: 1, borderRadius: 40, overflow: 'hidden', position: 'relative', zIndex: 1 },
+  cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
+  cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
-  scroll: { paddingBottom: 44 },
-
-  swoosh: {
-    position: 'absolute',
-    top: 0,
-    left: '4%',
-    width: 380,
-    height: 90,
-    transform: [{ rotateZ: '-2deg' }],
-    opacity: 0.9,
-    zIndex: 2,
-  },
-  dot: {
-    position: 'absolute',
-    top: 70,
-    left: 310,
-    height: '35%',
-    zIndex: 1,
-    opacity: 0.95,
-  },
+  swoosh: { position: 'absolute', top: 20, left: '6%', width: 380, height: 100, transform: [{ rotateZ: '-2deg' }], opacity: 0.9, zIndex: 2 },
+  dot:    { position: 'absolute', top: 100, left: 330, height: '5%', zIndex: 1, opacity: 0.95 },
 
   heading: {
     fontFamily: 'Antonio_700Bold',
@@ -310,21 +272,10 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  sub: {
-    fontFamily: 'AlumniSans_500Medium',
-    color: '#E5E7EB',
-    fontSize: 22,
-    lineHeight: 28,
-    marginBottom: 18,
-    maxWidth: 560,
-    marginTop: -10,
-    opacity: 0.95,
-    zIndex: 2,
-  },
 
-  // 🔵 Top-right info
+  // 🔵 Top-right pills
   topRightWrap: { position: 'absolute', top: 22, right: 26, zIndex: 7, width: 360 },
-  row: { flexDirection: 'row', gap: 14, marginBottom: 14, justifyContent: 'flex-end', marginTop: 15 },
+  row:          { flexDirection: 'row', gap: 14, marginBottom: 14, justifyContent: 'flex-end', marginTop: 15 },
   pill: {
     flexGrow: 1,
     backgroundColor: '#2763F6',
@@ -338,39 +289,73 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
   },
   curriculumPill: { flexGrow: 0, width: 135, height: 55, alignItems: 'center', justifyContent: 'center' },
-  gradePill: { flexGrow: 0, width: 110, height: 55, alignItems: 'center', justifyContent: 'center' },
-  subjectPill: { flexGrow: 0, width: 260, height: 55, alignSelf: 'flex-end', justifyContent: 'center' },
-  pillTop: { color: 'rgba(255,255,255,0.85)', fontFamily: 'AlumniSans_500Medium', fontSize: 12, letterSpacing: 1 },
-  pillMain: { color: '#FFFFFF', fontFamily: 'Antonio_700Bold', fontSize: 18, letterSpacing: 0.3, marginTop: 2 },
-  chev: { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
+  gradePill:      { flexGrow: 0, width: 110, height: 55, alignItems: 'center', justifyContent: 'center' },
+  subjectPill:    { flexGrow: 0, width: 260, height: 55, alignSelf: 'flex-end', justifyContent: 'center' },
+  pillTop:        { color: 'rgba(255,255,255,0.85)', fontFamily: 'AlumniSans_500Medium', fontSize: 12, letterSpacing: 1 },
+  pillMain:       { color: '#FFFFFF', fontFamily: 'Antonio_700Bold', fontSize: 18, letterSpacing: 0.3, marginTop: 2 },
+  chev:           { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
 
-  // 🧩 Modal dropdown (matches SignUp Select look)
-  ddBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  ddSheet: {
-    width: '100%',
-    maxWidth: 520,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
-  },
-  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
-  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
-  ddRowText: { fontSize: 16, color: '#1F2937' },
-  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
+  // Subject dropdown modal
+  ddBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  ddSheet:      { width: '100%', maxWidth: 520, backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16 },
+  ddTitle:      { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
+  ddRow:        { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
+  ddRowText:    { fontSize: 16, color: '#1F2937' },
+  ddCancel:     { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
   ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
 
-  cornerLogo: {
-    position: 'absolute',
-    bottom: 40,
-    left: -55,
-    height: 130,
-    opacity: 0.9,
-    zIndex: 10,
+  // Scrollable block
+  bigBlock: {
+    backgroundColor: 'none',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 70,
+    marginLeft: -20,
+    marginRight: -40,
+    height: 620,
+    alignSelf: 'stretch',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
+  bigBlockScroll: { flex: 1 },
+
+  // Result rows
+  resultRowWrap: { position: 'relative', marginBottom: 18 },
+  resultRow: {
+    borderRadius: 28,
+    backgroundColor: 'rgba(148,163,184,0.55)',
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    shadowColor: '#0B1220',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  resultPaper: { color: '#F9FAFB', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.3 },
+  resultDate:  { color: '#F9FAFB', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.3 },
+  resultScore: { color: '#F9FAFB', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.3 },
+  sep:         { color: '#F9FAFB', opacity: 0.75, fontFamily: 'Antonio_700Bold', fontSize: 16, marginHorizontal: 14, },
+
+  arrow: {
+    position: 'absolute',
+    right: 30,
+    top: '50%',
+    marginTop: -10,
+    width: 0,
+    height: 0,
+    borderTopWidth: 10,
+    borderBottomWidth: 10,
+    borderLeftWidth: 14,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: '#FACC15',
+  },
+
+  cornerLogo: { position: 'absolute', bottom: 40, left: -55, height: 130, opacity: 0.9, zIndex: 10 },
 });
