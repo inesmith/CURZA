@@ -1,17 +1,61 @@
 // src/screens/PractiseScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ImageBackground,
+  Modal,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-// ✅ AI callable
+// content
+import SectionTestPanel from '../components/SectionTestPanel';
+import FullExamPanel from '../components/FullExamPanel';
+
+// AI callable
 import { createTestAI } from '../../firebase';
 
-// 🔵 Firebase (for user data)
+// Firebase (for user data)
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
+
+// Panel option lists 
+const TOPICS = [
+  'Algebra', 'Functions & Graphs', 'Trigonometry', 'Geometry', 'Probability',
+  'Calculus: Differentiation', 'Calculus: Integration', 'Financial Maths'
+];
+const QUESTION_COUNTS = [5, 10, 15, 20, 25, 30];
+const PAPERS = ['Paper 1', 'Paper 2', 'Paper 3'];
+
+// Start handlers
+const startSection = async (params: import('../components/SectionTestPanel').SectionTestParams) => {
+  await createTestAI({
+    subject: params.subject,
+    grade: params.grade,
+    mode: 'section',
+    topic: params.topic,
+    count: params.count,
+    timed: params.timed,
+  });
+};
+
+const startFull = async (params: import('../components/FullExamPanel').FullExamParams) => {
+  await createTestAI({
+    subject: params.subject,
+    grade: params.grade,
+    mode: 'full',
+    examType: params.examType, // Paper 1 / 2 / 3
+    timed: params.timed,
+  });
+};
+
 
 export default function PractiseScreen() {
   const [centre, setCentre] = useState(false);
@@ -31,7 +75,12 @@ export default function PractiseScreen() {
     if (raw.includes('caps')) return 'CAPS';
     if (raw.includes('ieb')) return 'IEB';
     if (raw.includes('cambridge')) return 'Cambridge';
-    if (raw.includes('international baccalaureate') || raw === 'ib' || /\bib\b/.test(raw)) return 'IB';
+    if (
+      raw.includes('international baccalaureate') ||
+      raw === 'ib' ||
+      /\bib\b/.test(raw)
+    )
+      return 'IB';
     return raw.split(' ')[0].toUpperCase();
   };
 
@@ -40,7 +89,9 @@ export default function PractiseScreen() {
       .replace(/[_-]+/g, ' ')
       .trim()
       .split(/\s+/)
-      .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+      .map((w) =>
+        w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w
+      )
       .join(' ');
 
   useEffect(() => {
@@ -54,7 +105,11 @@ export default function PractiseScreen() {
         if (profile?.curriculum) setCurriculum(normalizeCurriculum(profile.curriculum));
         if (profile?.grade) setGrade(profile.grade);
 
-        const subs: any[] = profile?.subjects || profile?.selectedSubjects || profile?.subjectsChosen || [];
+        const subs: any[] =
+          profile?.subjects ||
+          profile?.selectedSubjects ||
+          profile?.subjectsChosen ||
+          [];
         if (Array.isArray(subs) && subs.length > 0) {
           const cleaned = subs.map(titleCase).filter(Boolean);
           setSubjects(cleaned);
@@ -78,8 +133,8 @@ export default function PractiseScreen() {
       const res = await createTestAI({
         subject,
         grade,
-        mode: "full",
-        examType: "Paper 1",
+        mode: 'full',
+        examType: 'Paper 1',
       });
       console.log('createTestAI(full) ->', res.data);
     } catch (err) {
@@ -93,8 +148,8 @@ export default function PractiseScreen() {
       const res = await createTestAI({
         subject,
         grade,
-        mode: "section",
-        topic: "Mechanics: Work, Energy and Power",
+        mode: 'section',
+        topic: 'Mechanics: Work, Energy and Power',
       });
       console.log('createTestAI(section) ->', res.data);
     } catch (err) {
@@ -106,10 +161,26 @@ export default function PractiseScreen() {
     <View style={s.page}>
       <View style={s.imageWrapper}>
         {/* Left rail artwork */}
-        <Image source={require('../../assets/DashboardTab.png')}  style={s.logintab} resizeMode="contain" />
-        <Image source={require('../../assets/SummariesTab.png')} style={s.logintab} resizeMode="contain" />
-        <Image source={require('../../assets/ResultsTab.png')}   style={s.logintab} resizeMode="contain" />
-        <Image source={require('../../assets/ProfileTab.png')}   style={s.logintab} resizeMode="contain" />
+        <Image
+          source={require('../../assets/DashboardTab.png')}
+          style={s.logintab}
+          resizeMode="contain"
+        />
+        <Image
+          source={require('../../assets/SummariesTab.png')}
+          style={s.logintab}
+          resizeMode="contain"
+        />
+        <Image
+          source={require('../../assets/ResultsTab.png')}
+          style={s.logintab}
+          resizeMode="contain"
+        />
+        <Image
+          source={require('../../assets/ProfileTab.png')}
+          style={s.logintab}
+          resizeMode="contain"
+        />
 
         {/* Clickable text labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
@@ -147,7 +218,11 @@ export default function PractiseScreen() {
         </View>
 
         {/* Corner logo */}
-        <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
+        <Image
+          source={require('../../assets/curza-logo.png')}
+          style={s.cornerLogo}
+          resizeMode="contain"
+        />
 
         {/* Main background */}
         <ImageBackground
@@ -162,7 +237,7 @@ export default function PractiseScreen() {
             </Pressable>
           </View>
 
-          {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
+          {/* 🔵 TOP-RIGHT BLUE BLOCKS (unchanged) */}
           <View style={s.topRightWrap}>
             <View style={s.row}>
               <View style={[s.pill, s.curriculumPill]}>
@@ -175,7 +250,7 @@ export default function PractiseScreen() {
               </View>
             </View>
 
-            {/* Subject dropdown (button unchanged, modal options like SignUp) */}
+            {/* Subject dropdown */}
             <View style={[s.pill, s.subjectPill]}>
               <Pressable
                 onPress={() => setShowSubjectDrop(true)}
@@ -189,7 +264,7 @@ export default function PractiseScreen() {
                 <Text style={s.chev}>▾</Text>
               </Pressable>
 
-              {/* ⚪ Modal options panel matching SignUp Select */}
+              {/* Modal options */}
               <Modal
                 transparent
                 visible={showSubjectDrop}
@@ -224,12 +299,53 @@ export default function PractiseScreen() {
           {/* 🔵 END TOP-RIGHT BLOCKS */}
 
           <View style={s.cardInner}>
-            <ScrollView contentContainerStyle={s.scroll}>
-              <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
-              <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
-              <Text style={s.heading}>PRACTISE WITH WRITING TESTS</Text>
-              <Text style={s.sub}>Ready to learn today?</Text>
-            </ScrollView>
+            {/* 🚫 Removed the outer page ScrollView (like Dashboard) */}
+            <Image
+              source={require('../../assets/swoosh-yellow.png')}
+              style={s.swoosh}
+              resizeMode="contain"
+            />
+            <Image
+              source={require('../../assets/dot-blue.png')}
+              style={s.dot}
+              resizeMode="contain"
+            />
+
+            <Text style={s.heading}>PRACTISE WITH WRITING TESTS</Text>
+            <Text style={s.sub}>Ready to learn today?</Text>
+
+            {/* Scrollable block */}
+            <View style={s.bigBlock}>
+            <ScrollView
+              style={s.bigBlockScroll}
+              contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
+              showsVerticalScrollIndicator
+            >
+              <View style={s.panelsRow}>
+                <SectionTestPanel
+                  subject={subject}
+                  grade={grade}
+                  topics={TOPICS}
+                  questionCounts={QUESTION_COUNTS}
+                  onStart={startSection}
+                />
+                <FullExamPanel
+                  subject={subject}
+                  grade={grade}
+                  papers={PAPERS}
+                  onStart={startFull}
+                />
+              </View>
+              {/* Info banner under panels */}
+                <View style={s.infoBanner}>
+                  <Text style={s.infoText}>
+                    FULL EXAMS FOLLOW THE OFFICIAL CAPS STRUCTURE AND INCLUDE MULTIPLE SECTIONS.{'\n'}
+                    AI WILL MARK STEP-BY-STEP AND PROVIDE FEEDBACK.
+                  </Text>
+                </View>
+              </ScrollView>
+            </View>
+            {/* End scrollable block */}
           </View>
         </ImageBackground>
       </View>
@@ -286,9 +402,8 @@ const s = StyleSheet.create({
   card: { flex: 1, borderRadius: 40, overflow: 'hidden', position: 'relative', zIndex: 1 },
   cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
   cardImage: { borderRadius: 40, resizeMode: 'cover' },
-  scroll: { paddingBottom: 44 },
 
-  // 🔵 Top-right info
+  // 🔵 Top-right info (unchanged)
   topRightWrap: { position: 'absolute', top: 22, right: 26, zIndex: 7, width: 360 },
   row: { flexDirection: 'row', gap: 14, marginBottom: 14, justifyContent: 'flex-end', marginTop: 15 },
   pill: {
@@ -310,7 +425,7 @@ const s = StyleSheet.create({
   pillMain: { color: '#FFFFFF', fontFamily: 'Antonio_700Bold', fontSize: 18, letterSpacing: 0.3, marginTop: 2 },
   chev: { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
 
-  // 🧩 Modal dropdown (matches SignUp Select look)
+  // Modal dropdown
   ddBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -331,9 +446,99 @@ const s = StyleSheet.create({
   ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
   ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
 
-  swoosh: { position: 'absolute', top: 0, left: '25%', width: 380, height: 90, transform: [{ rotateZ: '-2deg' }], opacity: 0.9, zIndex: 2 },
-  dot: { position: 'absolute', top: 0, left: 460, height: '35%', zIndex: 1, opacity: 0.95 },
-  heading: { fontFamily: 'Antonio_700Bold', color: 'white', fontSize: 48, letterSpacing: 0.5, marginBottom: 8, zIndex: 2, marginTop: 12 },
-  sub: { fontFamily: 'AlumniSans_500Medium', color: '#E5E7EB', fontSize: 22, lineHeight: 28, marginBottom: 18, maxWidth: 560, marginTop: -10, opacity: 0.95, zIndex: 2 },
-  cornerLogo: { position: 'absolute', bottom: 40, left: -55, height: 130, opacity: 0.9, zIndex: 10 },
+  // --- Heading visuals (unchanged)
+  swoosh: {
+    position: 'absolute',
+    top: 20,
+    left: '28%',
+    width: 380,
+    height: 100,
+    transform: [{ rotateZ: '-2deg' }],
+    opacity: 0.9,
+    zIndex: 2,
+  },
+  dot: { position: 'absolute', top: 10, left: 470, height: '5%', zIndex: 1, opacity: 0.95 },
+  heading: {
+    fontFamily: 'Antonio_700Bold',
+    color: 'white',
+    fontSize: 48,
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    zIndex: 2,
+    marginTop: 12,
+  },
+  sub: {
+    fontFamily: 'AlumniSans_500Medium',
+    color: '#E5E7EB',
+    fontSize: 22,
+    lineHeight: 28,
+    marginBottom: 18,
+    maxWidth: 560,
+    marginTop: -10,
+    opacity: 0.95,
+    zIndex: 2,
+  },
+  cornerLogo: {
+    position: 'absolute',
+    bottom: 40,
+    left: -55,
+    height: 130,
+    opacity: 0.9,
+    zIndex: 10,
+  },
+
+  // scrollable block
+  bigBlock: {
+    backgroundColor: 'none',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 30,
+    marginLeft: -20,
+    marginRight: -40,
+    height: 620,              
+    alignSelf: 'stretch',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  bigBlockScroll: { flex: 1 },
+
+  scrollBlockItem: {
+    width: 220,
+    height: 180,
+    borderRadius: 22,
+    backgroundColor: '#6B7280',
+    opacity: 0.5,
+  },
+  panelsRow: {
+  flexDirection: 'row',
+  gap: 18,
+  marginBottom: 18,
+  },
+  infoBanner: {
+  backgroundColor: '#2763F6', // your bright Curza blue
+  borderRadius: 18,
+  paddingVertical: 14,
+  paddingHorizontal: 22,
+  marginTop: 0,
+  shadowColor: '#000',
+  shadowOpacity: 0.25,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 3,
+},
+
+infoText: {
+  color: '#FFFFFF',
+  fontFamily: 'Antonio_700Bold',
+  fontSize: 16,
+  textAlign: 'center',
+  letterSpacing: 0.4,
+  lineHeight: 20,
+  paddingVertical: 10,
+},
+
 });
