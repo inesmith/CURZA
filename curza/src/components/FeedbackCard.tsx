@@ -24,7 +24,7 @@ export default function FeedbackCard({
       ))}
 
       <Pressable style={s.cta} onPress={onView}>
-        <Text style={s.ctaText}>View</Text>
+        <Text style={s.ctaText}>Practice</Text>
       </Pressable>
     </View>
   );

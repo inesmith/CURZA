@@ -507,9 +507,6 @@ const s = StyleSheet.create({
   },
   cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
-  // removed outer ScrollView to stop page scrolling
-  // scroll: { paddingBottom: 44 },
-
   swoosh: {
     position: 'absolute',
     top: 20,
@@ -560,7 +557,7 @@ const s = StyleSheet.create({
     marginTop: 30,
     marginLeft: -20,
     marginRight: -40,
-    height: 620,              // adjust to taste
+    height: 620,             
     alignSelf: 'stretch',
     overflow: 'hidden',
     shadowColor: '#000',
