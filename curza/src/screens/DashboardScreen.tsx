@@ -1,12 +1,20 @@
 // src/screens/DashboardScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Image, ImageBackground, Modal, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Image,
+  ImageBackground,
+  Modal,
+  ScrollView,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { useResponsive } from '../ui/responsive';
 
-// contents
 import ProgressBlock from '../components/ProgressBlock';
 import ToDoBlock, { TodoItem } from '../components/ToDoBlock';
 import ProgressSummaryBar from '../components/ProgressSummaryBar';
@@ -14,23 +22,41 @@ import UpcomingTestsCard from '../components/UpcomingTestsCard';
 import FeedbackCard from '../components/FeedbackCard';
 import RecentActivitiesCard from '../components/RecentActivitiesCard';
 
-// Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { db } from '../../firebase';
 
-const SWOOSH_W = 380; // must match s.swoosh.width
+import { useNotice } from '../contexts/NoticeProvider';
+
+const SWOOSH_W = 380;
 
 // Fallback subjects if profile has none
 const DEFAULT_SUBJECTS = [
-  'Mathematics', 'Mathematical Literacy', 'Physical Sciences', 'Life Sciences',
-  'Geography', 'History', 'Accounting', 'Business Studies', 'Economics',
+  'Mathematics',
+  'Mathematical Literacy',
+  'Physical Sciences',
+  'Life Sciences',
+  'Geography',
+  'History',
+  'Accounting',
+  'Business Studies',
+  'Economics',
 ];
 
-// --- helpers: keep changes minimal ---
+// ------- helpers -------
 const normalizeCurriculum = (value: any): string => {
   const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
-  if (!raw) return 'CAPS'; // sensible default
+  if (!raw) return 'CAPS';
   if (raw.includes('caps')) return 'CAPS';
   if (raw.includes('ieb')) return 'IEB';
   if (raw.includes('cambridge')) return 'Cambridge';
@@ -43,51 +69,54 @@ const titleCase = (s: any): string =>
     .replace(/[_-]+/g, ' ')
     .trim()
     .split(/\s+/)
-    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
     .join(' ');
-// -------------------------------------
-
-const todos: TodoItem[] = [
-  { id: '1', text: 'REVISE TRIGONOMETRY' },
-  { id: '2', text: 'PRACTISE MONKEY PUZZLES IN TESTS' },
-  { id: '3', text: 'COMPLETE 3 PRACTISE TESTS' },
-];
+// -----------------------
 
 export default function DashboardScreen() {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const R = useResponsive();
+  const { show } = useNotice();
+
   const [firstName, setFirstName] = useState<string>('');
   const [headingW, setHeadingW] = useState(0);
   const [headingX, setHeadingX] = useState(0);
 
-  // 🔵 Top-right blocks state
+  // Top-right blue blocks
   const [curriculum, setCurriculum] = useState<string>('CAPS');
   const [grade, setGrade] = useState<number | string>('12');
   const [subject, setSubject] = useState<string>('Mathematics');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
   const [subjects, setSubjects] = useState<string[]>(DEFAULT_SUBJECTS);
 
-  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const R = useResponsive();
+  // To-Dos
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newTodoText, setNewTodoText] = useState('');
 
-  const getFirst = (raw?: string | null): string => {
-    if (!raw) return '';
-    const t = raw.trim();
-    if (!t) return '';
-    if (t.includes('@')) return t.split('@')[0];
-    return t.split(/\s+/)[0];
-  };
-
+  // ---- Auth + Profile & Subjects ----
   useEffect(() => {
     const auth = getAuth();
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setFirstName('');
+        setTodos([]); // clear if signed out
         return;
       }
+
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
         const profile = snap.exists() ? (snap.data() as any) : undefined;
 
         const profileFullName: string | undefined = profile?.fullName;
+        const getFirst = (raw?: string | null): string => {
+          if (!raw) return '';
+          const t = raw.trim();
+          if (!t) return '';
+          if (t.includes('@')) return t.split('@')[0];
+          return t.split(/\s+/)[0];
+        };
+
         const name =
           getFirst(profileFullName) ||
           getFirst(user.displayName) ||
@@ -95,15 +124,9 @@ export default function DashboardScreen() {
           '';
         setFirstName(name);
 
-        // Curriculum (abbreviate)
-        if (profile?.curriculum) {
-          setCurriculum(normalizeCurriculum(profile.curriculum));
-        }
-
-        // Grade
+        if (profile?.curriculum) setCurriculum(normalizeCurriculum(profile.curriculum));
         if (profile?.grade) setGrade(profile.grade);
 
-        // Subjects list (only show what user signed up for)
         const signedUpSubjects: any[] =
           profile?.subjects ||
           profile?.selectedSubjects ||
@@ -120,32 +143,91 @@ export default function DashboardScreen() {
             setSubject(cleaned[0]);
           }
         } else {
-          // Fallback to defaults
           setSubjects(DEFAULT_SUBJECTS);
-          if (profile?.subject && DEFAULT_SUBJECTS.includes(titleCase(profile.subject))) {
-            setSubject(titleCase(profile.subject));
-          } else {
-            setSubject(DEFAULT_SUBJECTS[0]);
-          }
+          const chosen = profile?.subject ? titleCase(profile.subject) : DEFAULT_SUBJECTS[0];
+          setSubject(DEFAULT_SUBJECTS.includes(chosen) ? chosen : DEFAULT_SUBJECTS[0]);
         }
-      } catch {
+
+        // After profile is ready, start To-Do listener
+        const todosCol = collection(db, 'users', user.uid, 'todos');
+        const qy = query(todosCol, orderBy('createdAt', 'asc'));
+        const unsubTodos = onSnapshot(
+          qy,
+          (snap) => {
+            const list: TodoItem[] = [];
+            snap.forEach((d) => {
+              const data = d.data() as any;
+              list.push({ id: d.id, text: String(data.text ?? '').toUpperCase() });
+            });
+            setTodos(list);
+          },
+          (err) => {
+            console.log('Todos snapshot error:', err);
+            show('Could not load your To-Do list. Permissions or network issue.', 'error', 3000);
+          },
+        );
+
+        // cleanup To-Do listener when auth user changes
+        return () => unsubTodos();
+      } catch (e) {
         const fallback =
-          getFirst((getAuth().currentUser?.displayName) || '') ||
-          getFirst((getAuth().currentUser?.email) || '') ||
-          '';
+          (getAuth().currentUser?.displayName?.split(' ')?.[0] ?? '') ||
+          (getAuth().currentUser?.email?.split('@')?.[0] ?? '');
         setFirstName(fallback);
       }
     });
-    return () => unsub();
-  }, []);
+
+    return () => unsubAuth();
+  }, [show]);
+
+  // ---- To-Do actions ----
+  const handleAddTodo = async () => {
+    setShowAddModal(true);
+  };
+
+  const saveTodo = async () => {
+    const user = getAuth().currentUser;
+    if (!user) return;
+
+    const text = newTodoText.trim();
+    if (!text) {
+      setShowAddModal(false);
+      setNewTodoText('');
+      return;
+    }
+
+    try {
+      const todosCol = collection(db, 'users', user.uid, 'todos');
+      await addDoc(todosCol, {
+        text,
+        createdAt: serverTimestamp(),
+        completed: false,
+      });
+      setShowAddModal(false);
+      setNewTodoText('');
+      show('A new To-Do was added successfully.');
+    } catch (e) {
+      show('Could not add your To-Do right now.', 'error', 2800);
+    }
+  };
+
+  const completeTodo = async (todoId: string) => {
+    const user = getAuth().currentUser;
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'todos', todoId));
+      show('Marked as completed.');
+    } catch (e) {
+      show('Could not complete the To-Do.', 'error', 2600);
+    }
+  };
 
   const headingText = firstName
     ? `WELCOME BACK, ${firstName.toUpperCase()}`
     : 'WELCOME BACK';
 
-  // Exact center alignment: center(swoosh) = center(text)
   const swooshLeft =
-    headingW > 0 ? (headingX + headingW / 2) - (SWOOSH_W / 2) - 30 : '20%';
+    headingW > 0 ? headingX + headingW / 2 - SWOOSH_W / 2 - 30 : '20%';
 
   return (
     <View style={s.page}>
@@ -158,25 +240,25 @@ export default function DashboardScreen() {
 
         {/* Clickable text labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
-          <Pressable onPress={() => navigation.navigate('Summaries')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable onPress={() => navigation.navigate('Summaries')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.summariesTab]}>SUMMARIES</Text>
           </Pressable>
         </View>
 
         <View style={[s.tabTextWrapper, s.posPractice]}>
-          <Pressable onPress={() => navigation.navigate('PracticeTests')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable onPress={() => navigation.navigate('PracticeTests')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
           </Pressable>
         </View>
 
         <View style={[s.tabTextWrapper, s.posResults]}>
-          <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.resultsTab]}>RESULTS</Text>
           </Pressable>
         </View>
 
         <View style={[s.tabTextWrapper, s.posProfile]}>
-          <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.profileTab]}>PROFILE & SETTINGS</Text>
           </Pressable>
         </View>
@@ -192,7 +274,7 @@ export default function DashboardScreen() {
           resizeMode="cover"
         >
           <View style={[s.tabTextWrapper, s.posSummaries]}>
-            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
             </Pressable>
           </View>
@@ -200,20 +282,17 @@ export default function DashboardScreen() {
           {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
             <View style={s.row}>
-              {/* Curriculum pill */}
               <View style={[s.pill, s.curriculumPill]}>
                 <Text style={s.pillTop}>CURRICULUM</Text>
                 <Text style={s.pillMain}>{String(curriculum).toUpperCase()}</Text>
               </View>
 
-              {/* Grade pill */}
               <View style={[s.pill, s.gradePill]}>
                 <Text style={s.pillTop}>GRADE</Text>
                 <Text style={s.pillMain}>{String(grade).toUpperCase()}</Text>
               </View>
             </View>
 
-            {/* Subject pill (button unchanged) */}
             <View style={[s.pill, s.subjectPill]}>
               <Pressable
                 onPress={() => setShowSubjectDrop(true)}
@@ -227,7 +306,6 @@ export default function DashboardScreen() {
                 <Text style={s.chev}>▾</Text>
               </Pressable>
 
-              {/* ⚪ Modal options panel matching SignUp Select */}
               <Modal
                 transparent
                 visible={showSubjectDrop}
@@ -262,13 +340,11 @@ export default function DashboardScreen() {
           {/* 🔵 END TOP-RIGHT BLUE BLOCKS */}
 
           <View style={s.cardInner}>
-            {/* no outer ScrollView: the page is static */}
             <Image
               source={require('../../assets/swoosh-yellow.png')}
               style={[s.swoosh, { left: swooshLeft }]}
               resizeMode="contain"
             />
-
             <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
 
             <Text
@@ -292,30 +368,39 @@ export default function DashboardScreen() {
                 showsVerticalScrollIndicator
               >
                 <View style={s.contentRow}>
-                  {/* LEFT: progress + blue summary bar */}
+                  {/* LEFT */}
                   <View style={s.leftCol}>
                     <ProgressBlock
-                      stats={{ summariesStudied: 15, chaptersCovered: 25, quizzesDone: 20, testsCompleted: 40 }}
+                      stats={{
+                        summariesStudied: 15,
+                        chaptersCovered: 25,
+                        quizzesDone: 20,
+                        testsCompleted: 40,
+                      }}
                     />
-                    <View style={{ marginTop: 0,}}>
+
+                    <View style={{ marginTop: 0 }}>
                       <ProgressSummaryBar text="YOU HAVE COMPLETED 4/12 MATH TOPICS" />
                     </View>
-                    {/* two cards row */}
+
                     <View style={s.smallCardsRow}>
-                      <UpcomingTestsCard onStart={() => console.log('Start suggested test')} />
-                      <FeedbackCard
-                        areas={['FRACTIONS', 'ALGEBRA']}
-                        onView={() => console.log('Open feedback')}
-                      />
+                      <UpcomingTestsCard onStart={() => {}} />
+                      <FeedbackCard areas={['FRACTIONS', 'ALGEBRA']} onView={() => {}} />
                     </View>
                   </View>
 
-                  {/* RIGHT: To-Do list + Recent Activities (stacked) */}
+                  {/* RIGHT */}
                   <View style={s.rightCol}>
                     <ToDoBlock
-                      items={todos}
-                      onAdd={() => console.log('Add a new to-do')}
+                      items={todos.map((t) => ({
+                        ...t,
+                        onPress: () => {},
+                        // Long-press to complete:
+                        onLongPress: () => completeTodo(t.id),
+                      }))}
+                      onAdd={handleAddTodo}
                     />
+
                     <View style={s.recentSpacer}>
                       <RecentActivitiesCard
                         items={[
@@ -326,13 +411,65 @@ export default function DashboardScreen() {
                     </View>
                   </View>
                 </View>
-
               </ScrollView>
             </View>
-            {/* Scrollable block */}
           </View>
         </ImageBackground>
       </View>
+
+      {/* Add To-Do Modal */}
+      <Modal
+        transparent
+        visible={showAddModal}
+        animationType="fade"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <View style={s.ddBackdrop}>
+          <View style={s.ddSheet}>
+            <Text style={s.ddTitle}>Add a To-Do</Text>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#D1D5DB',
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                backgroundColor: '#FFFFFF',
+                marginBottom: 12,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: 'AlumniSans_500Medium',
+                  fontSize: 16,
+                  color: '#1F2937',
+                }}
+              >
+                {newTodoText || 'Type here…'}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+              <Pressable
+                style={{ height: 44, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => {
+                  setShowAddModal(false);
+                  setNewTodoText('');
+                }}
+              >
+                <Text style={{ color: '#1F2937', fontFamily: 'Antonio_700Bold', fontSize: 16 }}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={{ height: 44, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#2763F6', alignItems: 'center', justifyContent: 'center' }}
+                onPress={saveTodo}
+              >
+                <Text style={{ color: '#FFFFFF', fontFamily: 'Antonio_700Bold', fontSize: 16 }}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -344,6 +481,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   imageWrapper: {
     width: '94%',
     height: '95%',
@@ -357,7 +495,6 @@ const s = StyleSheet.create({
     position: 'relative',
   },
 
-  // Base text wrapper (left rail anchor)
   tabTextWrapper: {
     position: 'absolute',
     left: '4.5%',
@@ -365,12 +502,11 @@ const s = StyleSheet.create({
     zIndex: 5,
   },
 
-  // Individual vertical positions
-  posActive:    { top: '15%' },
+  posActive: { top: '15%' },
   posSummaries: { top: '22%' },
-  posPractice:  { top: '30%' },
-  posResults:   { top: '39%' },
-  posProfile:   { top: '48%' },
+  posPractice: { top: '30%' },
+  posResults: { top: '39%' },
+  posProfile: { top: '48%' },
 
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
@@ -383,14 +519,13 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-  dashboardTab:  { fontWeight: 'bold', marginTop: -115, },
-  summariesTab:{ opacity: 0.8, marginTop: -15 },
-  practiseTab: { opacity: 0.8, marginTop: 20 },
-  resultsTab:  { opacity: 0.8, marginTop: 45 },
-  profileTab:  { opacity: 0.8, marginTop: 72},
-  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
 
-  // Tab artwork
+  dashboardTab: { fontWeight: 'bold', marginTop: -115 },
+  summariesTab: { opacity: 0.8, marginTop: -15 },
+  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
+  resultsTab: { opacity: 0.8, marginTop: 45 },
+  profileTab: { opacity: 0.8, marginTop: 72 },
+
   tab: {
     position: 'absolute',
     height: '100%',
@@ -398,7 +533,6 @@ const s = StyleSheet.create({
     zIndex: 1,
   },
 
-  // Main card
   card: {
     flex: 1,
     borderRadius: 40,
@@ -407,7 +541,6 @@ const s = StyleSheet.create({
     zIndex: 1,
   },
 
-  // 🔵 top-right container (inside the card)
   topRightWrap: {
     position: 'absolute',
     top: 22,
@@ -415,6 +548,7 @@ const s = StyleSheet.create({
     zIndex: 6,
     width: 360,
   },
+
   row: {
     flexDirection: 'row',
     gap: 14,
@@ -422,6 +556,7 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
     marginTop: 15,
   },
+
   pill: {
     flexGrow: 1,
     backgroundColor: '#2763F6',
@@ -434,6 +569,7 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
+
   curriculumPill: {
     flexGrow: 0,
     width: 135,
@@ -442,6 +578,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   gradePill: {
     flexGrow: 0,
     width: 110,
@@ -450,6 +587,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     height: 55,
   },
+
   subjectPill: {
     flexGrow: 0,
     width: 260,
@@ -458,12 +596,14 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     height: 55,
   },
+
   pillTop: {
     color: 'rgba(255,255,255,0.85)',
     fontFamily: 'AlumniSans_500Medium',
     fontSize: 12,
     letterSpacing: 1,
   },
+
   pillMain: {
     color: '#FFFFFF',
     fontFamily: 'Antonio_700Bold',
@@ -471,13 +611,13 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
     marginTop: 2,
   },
+
   chev: {
     color: '#FFFFFF',
     fontSize: 18,
     marginLeft: 8,
   },
 
-  // Modal dropdown 
   ddBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -485,6 +625,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
+
   ddSheet: {
     width: '100%',
     maxWidth: 520,
@@ -492,11 +633,35 @@ const s = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
-  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
-  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
-  ddRowText: { fontSize: 16, color: '#1F2937' },
-  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
-  ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
+
+  ddTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+
+  ddRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+
+  ddRowText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+
+  ddCancel: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    padding: 8,
+  },
+
+  ddCancelText: {
+    color: '#1F2937',
+    textDecorationLine: 'underline',
+  },
 
   cardInner: {
     flex: 1,
@@ -505,7 +670,11 @@ const s = StyleSheet.create({
     marginLeft: 210,
     marginRight: 14,
   },
-  cardImage: { borderRadius: 40, resizeMode: 'cover' },
+
+  cardImage: {
+    borderRadius: 40,
+    resizeMode: 'cover',
+  },
 
   swoosh: {
     position: 'absolute',
@@ -516,6 +685,7 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 2,
   },
+
   dot: {
     position: 'absolute',
     top: 80,
@@ -537,6 +707,7 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
+
   sub: {
     fontFamily: 'AlumniSans_500Medium',
     color: '#E5E7EB',
@@ -549,7 +720,6 @@ const s = StyleSheet.create({
     zIndex: 2,
   },
 
-  // Scrollable block
   bigBlock: {
     backgroundColor: 'none',
     borderRadius: 16,
@@ -557,7 +727,7 @@ const s = StyleSheet.create({
     marginTop: 30,
     marginLeft: -20,
     marginRight: -40,
-    height: 620,             
+    height: 620,
     alignSelf: 'stretch',
     overflow: 'hidden',
     shadowColor: '#000',
@@ -566,33 +736,22 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  bigBlockScroll: { flex: 1 },
-  bigBlockText: {
-    color: '#111827',
-    fontFamily: 'AlumniSans_500Medium',
-    fontSize: 18,
-    marginBottom: 8,
-  },
-  bigBlockItem: {
-    color: '#111827',
-    fontFamily: 'AlumniSans_500Medium',
-    fontSize: 16,
-    opacity: 0.85,
-    marginBottom: 6,
+
+  bigBlockScroll: {
+    flex: 1,
   },
 
   contentRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start', // keeps top edges aligned
+    alignItems: 'flex-start',
     gap: 12,
   },
 
   leftCol: {
-    maxWidth: 430, // matches your ProgressBlock width
+    maxWidth: 430,
     flexShrink: 0,
   },
 
-  // NEW: wrapper so RecentActivities sits directly under To-Do
   rightCol: {
     maxWidth: 520,
     flexShrink: 1,
@@ -615,7 +774,6 @@ const s = StyleSheet.create({
   },
 
   recentSpacer: {
-    marginTop: 12, // nudge it down; tweak 12–20 to taste
+    marginTop: 12,
   },
-
 });

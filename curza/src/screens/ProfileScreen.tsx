@@ -38,6 +38,10 @@ export default function ProfileScreen() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);               // final confirmation
   const [busy, setBusy] = useState(false);
 
+  // ✅ Subjects selection modal (checkbox list)
+  const [showSubjectsModal, setShowSubjectsModal] = useState(false);
+  const [tempSubjects, setTempSubjects] = useState<string[]>([]);
+
   // Helpers
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
@@ -55,6 +59,30 @@ export default function ProfileScreen() {
       .split(/\s+/)
       .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
+
+  // Grade-aware subjects list (simple, sensible defaults)
+  const getSubjectOptions = (curr: string, g: string | number): string[] => {
+    const gg = Number(g);
+    // Core lists (South Africa common CAPS/IEB subjects)
+    const core10to12 = [
+      'English', 'Afrikaans', 'isiZulu', 'Mathematics', 'Mathematical Literacy', 'Life Orientation',
+      'Physical Sciences', 'Life Sciences', 'Geography', 'History',
+      'Accounting', 'Business Studies', 'Economics',
+      'Computer Applications Technology', 'Information Technology',
+      'Visual Arts', 'Design', 'Dramatic Arts', 'Music',
+      'Tourism', 'Hospitality Studies',
+      'Agricultural Sciences',
+    ];
+    const core8to9 = [
+      'English', 'Afrikaans', 'isiZulu', 'Mathematics',
+      'Natural Sciences', 'Social Sciences', 'Technology',
+      'Economic & Management Sciences', 'Creative Arts', 'Life Orientation',
+    ];
+    if (gg >= 10) return core10to12;
+    if (gg >= 8) return core8to9;
+    // fallback
+    return core10to12;
+  };
 
   // Load user data
   useEffect(() => {
@@ -130,7 +158,6 @@ export default function ProfileScreen() {
       setBusy(true);
       const uid = userIdRef.current;
       if (!uid) return;
-      // Mark as deactivated; keep doc so user can reactivate on next login
       await updateDoc(doc(db, 'users', uid), {
         status: 'deactivated',
         deactivatedAt: serverTimestamp(),
@@ -156,13 +183,8 @@ export default function ProfileScreen() {
       const uid = userIdRef.current;
       if (!user || !uid) return;
 
-      // Remove user profile doc (and any other per-user docs if you add them later)
       await deleteDoc(doc(db, 'users', uid));
-
-      // Store the reason in an audit collection.
       await addDoc(collection(db, 'account_deletion_audit'), { uid, reason: reasonText, at: serverTimestamp() });
-
-      // Delete auth user (this implicitly signs the user out)
       await deleteUser(user);
 
       setBusy(false);
@@ -212,7 +234,7 @@ export default function ProfileScreen() {
       await updateDoc(doc(db, 'users', uid), {
         fullName,
         idNumber,
-        email, 
+        email,
         curriculum,
         grade,
         language,
@@ -226,6 +248,25 @@ export default function ProfileScreen() {
     } catch (e) {
       show('Could not save profile changes. Please try again.', 'error', 2800);
     }
+  };
+
+  // ===== Subjects modal handlers =====
+  const openSubjectsModal = () => {
+    setTempSubjects(subjects);
+    setShowSubjectsModal(true);
+  };
+
+  const toggleTempSubject = (name: string) => {
+    setTempSubjects(prev =>
+      prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
+    );
+  };
+
+  const applySubjectsModal = () => {
+    // keep title case and trimmed
+    const cleaned = tempSubjects.map(titleCase).map(s => s.trim()).filter(Boolean);
+    setSubjects(cleaned);
+    setShowSubjectsModal(false);
   };
 
   return (
@@ -401,18 +442,11 @@ export default function ProfileScreen() {
                   <View style={s.rightCol}>
                     <Text style={s.label}>Subjects Selected</Text>
                     {editMode ? (
-                      <TextInput
-                        value={subjects.join(', ')}
-                        onChangeText={(v) =>
-                          setSubjects(
-                            v.split(',').map(titleCase).map(s => s.trim()).filter(Boolean)
-                          )
-                        }
-                        style={[s.inputBoxEditable, { height: 120, textAlignVertical: 'top', paddingTop: 12 }]}
-                        multiline
-                        placeholder="Comma-separated (e.g., English, Mathematics, Physical Sciences)"
-                        placeholderTextColor="rgba(243,244,246,0.6)"
-                      />
+                      <Pressable onPress={openSubjectsModal} style={[s.inputBoxEditable, { height: 48, justifyContent: 'center' }]}>
+                        <Text style={s.inputText}>
+                          {subjects.length ? subjects.join(', ') : 'Select subjects'}
+                        </Text>
+                      </Pressable>
                     ) : (
                       <View style={s.subjectsBox}>
                         {subjects.length > 0 ? (
@@ -443,6 +477,39 @@ export default function ProfileScreen() {
           </View>
 
           {/* =====================  MODALS  ===================== */}
+
+          {/* Subjects multi-select (checkbox) */}
+          <Modal transparent visible={showSubjectsModal} animationType="fade" onRequestClose={() => setShowSubjectsModal(false)}>
+            <View style={s.modalBackdrop}>
+              <View style={s.modalSheet}>
+                <Text style={s.modalTitle}>Select your subjects</Text>
+                <Text style={s.modalText}>
+                  {Number(grade) >= 10 ? 'Choose your FET subjects (Gr 10–12)' : 'Choose your GET subjects (Gr 8–9)'}
+                </Text>
+
+                <ScrollView style={{ maxHeight: 360 }}>
+                  {getSubjectOptions(curriculum, grade).map(name => {
+                    const checked = tempSubjects.includes(name);
+                    return (
+                      <Pressable key={name} onPress={() => toggleTempSubject(name)} style={s.checkRow}>
+                        <View style={[s.checkbox, checked && s.checkboxOn]} />
+                        <Text style={s.checkText}>{name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={s.modalRow}>
+                  <Pressable style={[s.modalBtn, s.modalBtnSecondary]} onPress={() => setShowSubjectsModal(false)}>
+                    <Text style={s.modalBtnTextSecondary}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={[s.modalBtn, s.modalBtnPrimary]} onPress={applySubjectsModal}>
+                    <Text style={s.modalBtnText}>Apply</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
 
           {/* 1) Choose Delete or Deactivate */}
           <Modal transparent visible={showActionModal} animationType="fade" onRequestClose={() => setShowActionModal(false)}>
@@ -674,6 +741,7 @@ const s = StyleSheet.create({
   leftCol: { flexShrink: 0, minWidth: 430 },
   rightCol: { flex: 1, minWidth: 300 },
 
+  // Typography request: labels 18, text 16
   label: {
     color: '#FFFFFF',
     fontFamily: 'AlumniSans_500Medium',
@@ -681,6 +749,7 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
 
+  // Read-only box
   inputBox: {
     height: 44,
     borderRadius: 12,
@@ -702,6 +771,7 @@ const s = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
+  // Editable input (matches box style)
   inputBoxEditable: {
     height: 44,
     borderRadius: 12,
@@ -846,5 +916,26 @@ const s = StyleSheet.create({
     color: '#1F2937',
     fontFamily: 'Antonio_700Bold',
     fontSize: 16,
+  },
+
+  // Checkbox row (subjects modal)
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+  },
+  checkbox: {
+    width: 24, height: 24, borderRadius: 6,
+    backgroundColor: 'rgba(31,41,55,0.08)',
+    borderWidth: 2, borderColor: 'rgba(31,41,55,0.35)',
+    marginRight: 10,
+  },
+  checkboxOn: { backgroundColor: '#EAB308', borderColor: '#EAB308' },
+  checkText: {
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 16,
+    color: '#1F2937',
   },
 });
