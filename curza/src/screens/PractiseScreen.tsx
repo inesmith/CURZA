@@ -1,15 +1,6 @@
 // src/screens/PractiseScreen.tsx
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  Image,
-  ImageBackground,
-  Modal,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal, } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
@@ -33,29 +24,6 @@ const TOPICS = [
 ];
 const QUESTION_COUNTS = [5, 10, 15, 20, 25, 30];
 const PAPERS = ['Paper 1', 'Paper 2', 'Paper 3'];
-
-// Start handlers
-const startSection = async (params: import('../components/SectionTestPanel').SectionTestParams) => {
-  await createTestAI({
-    subject: params.subject,
-    grade: params.grade,
-    mode: 'section',
-    topic: params.topic,
-    count: params.count,
-    timed: params.timed,
-  });
-};
-
-const startFull = async (params: import('../components/FullExamPanel').FullExamParams) => {
-  await createTestAI({
-    subject: params.subject,
-    grade: params.grade,
-    mode: 'full',
-    examType: params.examType, // Paper 1 / 2 / 3
-    timed: params.timed,
-  });
-};
-
 
 export default function PractiseScreen() {
   const [centre, setCentre] = useState(false);
@@ -155,6 +123,44 @@ export default function PractiseScreen() {
     } catch (err) {
       console.log('createTestAI(section) error:', err);
     }
+  };
+
+  // Navigate to TestRunner after starting 
+  const onStartSection = async (params: import('../components/SectionTestPanel').SectionTestParams) => {
+    await createTestAI({
+      subject: params.subject,
+      grade: params.grade,
+      mode: 'section',
+      topic: params.topic,
+      count: params.count,
+      timed: params.timed,
+    });
+    navigation.navigate('TestRunner', {
+      mode: 'section',
+      title: params.topic ?? 'Section',
+      subject: params.subject,
+      totalMarks: (params.count ?? 10) * 5, // fallback; replace with AI value if returned
+      timed: !!params.timed,
+      durationSec: params.timed ? (params.durationSec ?? (params.count ?? 10) * 120) : undefined,
+    });
+  };
+
+  const onStartFull = async (params: import('../components/FullExamPanel').FullExamParams) => {
+    await createTestAI({
+      subject: params.subject,
+      grade: params.grade,
+      mode: 'full',
+      examType: params.examType,
+      timed: params.timed,
+    });
+    navigation.navigate('TestRunner', {
+      mode: 'full',
+      title: `${params.subject} ${params.examType}`,
+      subject: params.subject,
+      totalMarks: 150, // fallback; replace with AI value if returned
+      timed: !!params.timed,
+      durationSec: params.timed ? (params.durationSec ?? 3 * 60 * 60) : undefined,
+    });
   };
 
   return (
@@ -315,27 +321,27 @@ export default function PractiseScreen() {
 
             {/* Scrollable block */}
             <View style={s.bigBlock}>
-            <ScrollView
-              style={s.bigBlockScroll}
-              contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
-              showsVerticalScrollIndicator
-            >
-              <View style={s.panelsRow}>
-                <SectionTestPanel
-                  subject={subject}
-                  grade={grade}
-                  topics={TOPICS}
-                  questionCounts={QUESTION_COUNTS}
-                  onStart={startSection}
-                />
-                <FullExamPanel
-                  subject={subject}
-                  grade={grade}
-                  papers={PAPERS}
-                  onStart={startFull}
-                />
-              </View>
-              {/* Info banner*/}
+              <ScrollView
+                style={s.bigBlockScroll}
+                contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
+                showsVerticalScrollIndicator
+              >
+                <View style={s.panelsRow}>
+                  <SectionTestPanel
+                    subject={subject}
+                    grade={grade}
+                    topics={TOPICS}
+                    questionCounts={QUESTION_COUNTS}
+                    onStart={onStartSection}
+                  />
+                  <FullExamPanel
+                    subject={subject}
+                    grade={grade}
+                    papers={PAPERS}
+                    onStart={onStartFull}
+                  />
+                </View>
+                {/* Info banner*/}
                 <View style={s.infoBanner}>
                   <Text style={s.infoText}>
                     FULL EXAMS FOLLOW THE OFFICIAL CAPS STRUCTURE AND INCLUDE MULTIPLE SECTIONS.{'\n'}
@@ -512,31 +518,30 @@ const s = StyleSheet.create({
     opacity: 0.5,
   },
   panelsRow: {
-  flexDirection: 'row',
-  gap: 18,
-  marginBottom: 18,
+    flexDirection: 'row',
+    gap: 18,
+    marginBottom: 18,
   },
   infoBanner: {
-  backgroundColor: '#2763F6',
-  borderRadius: 18,
-  paddingVertical: 14,
-  paddingHorizontal: 22,
-  marginTop: 0,
-  shadowColor: '#000',
-  shadowOpacity: 0.25,
-  shadowRadius: 6,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
-},
+    backgroundColor: '#2763F6',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    marginTop: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
 
-infoText: {
-  color: '#FFFFFF',
-  fontFamily: 'Antonio_700Bold',
-  fontSize: 16,
-  textAlign: 'center',
-  letterSpacing: 0.4,
-  lineHeight: 20,
-  paddingVertical: 10,
-},
-
+  infoText: {
+    color: '#FFFFFF',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 16,
+    textAlign: 'center',
+    letterSpacing: 0.4,
+    lineHeight: 20,
+    paddingVertical: 10,
+  },
 });
