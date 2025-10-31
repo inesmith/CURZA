@@ -1,3 +1,4 @@
+// src/components/SectionTestPanel.tsx
 import React, { useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 
@@ -8,6 +9,7 @@ export type SectionTestParams = {
   topic?: string;
   count?: number;
   timed: boolean;
+  durationSec?: number;
 };
 
 type Props = {
@@ -32,6 +34,8 @@ export default function SectionTestPanel({
   const [numQuestions, setNumQuestions] = useState<number | undefined>(undefined);
 
   const [timed, setTimed] = useState(false);
+
+  const canStart = Boolean(topic && numQuestions);
 
   return (
     <View style={s.panel}>
@@ -106,7 +110,8 @@ export default function SectionTestPanel({
       </Pressable>
 
       <Pressable
-        style={s.primaryBtn}
+        style={[s.primaryBtn, canStart ? s.primaryBtnEnabled : s.primaryBtnDisabled]}
+        disabled={!canStart}
         onPress={() =>
           onStart({
             subject,
@@ -115,6 +120,7 @@ export default function SectionTestPanel({
             topic,
             count: numQuestions,
             timed,
+            durationSec: timed ? ((numQuestions ?? 10) * 120) : undefined, // 2 min per Q
           })
         }
       >
@@ -156,27 +162,46 @@ const s = StyleSheet.create({
     elevation: 3,
   },
   selectLabel: {
-   color: '#F9FAFB',
+    color: '#F9FAFB',
     fontFamily: 'Antonio_700Bold',
     fontSize: 16,
     letterSpacing: 0.4,
     textAlign: 'center',
   },
-  selectChevron: { color: '#FFFFFF', fontSize: 18, marginLeft: 10 },
+  selectChevron: { 
+    color: '#FFFFFF', 
+    fontSize: 18, 
+    marginLeft: 10 
+  },
 
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18, marginBottom: 12 },
+  timeRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12, 
+    marginTop: 18, 
+    marginBottom: 12 
+  },
   checkbox: {
-    width: 28, height: 28, borderRadius: 6,
+    width: 28, 
+    height: 28, 
+    borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)',
   },
-  checkboxOn: { backgroundColor: '#E5E7EB', borderColor: '#FACC15' },
-  timeLabel: { color: '#E5E7EB', fontFamily: 'AlumniSans_500Medium', fontSize: 16, letterSpacing: 0.3 },
+  checkboxOn: { 
+    backgroundColor: '#FACC15', 
+    borderColor: '#FACC15' 
+  },
+  timeLabel: { 
+    color: '#E5E7EB', 
+    fontFamily: 'AlumniSans_500Medium', 
+    fontSize: 16, 
+    letterSpacing: 0.3 
+  },
 
   primaryBtn: {
     height: 54,
     borderRadius: 14,
-    backgroundColor: '#FACC15',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -184,18 +209,55 @@ const s = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-  primaryBtnText: { 
+  primaryBtnEnabled: {
+    backgroundColor: '#FACC15',
+  },
+  primaryBtnDisabled: { 
+    backgroundColor: '#9CA3AF', // grey when disabled
+  },
+  primaryBtnText: {
     color: '#1F2937',
     fontFamily: 'Antonio_700Bold',
     fontSize: 16,
   },
 
-  // Modal (matches your app’s dropdown modal)
-  ddBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  ddSheet: { width: '100%', maxWidth: 520, backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16 },
-  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
-  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
-  ddRowText: { fontSize: 16, color: '#1F2937' },
-  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
-  ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
+  // Modal 
+  ddBackdrop: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.35)', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    padding: 20 
+  },
+  ddSheet: { 
+    width: '100%', 
+    maxWidth: 520, 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 16, 
+    padding: 16 
+  },
+  ddTitle: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#1F2937', 
+    marginBottom: 8 
+  },
+  ddRow: { 
+    paddingVertical: 12, 
+    paddingHorizontal: 8, 
+    borderRadius: 10 
+  },
+  ddRowText: { 
+    fontSize: 16, 
+    color: '#1F2937' 
+  },
+  ddCancel: { 
+    marginTop: 8, 
+    alignSelf: 'flex-end', 
+    padding: 8 
+  },
+  ddCancelText: { 
+    color: '#1F2937', 
+    textDecorationLine: 'underline' 
+  },
 });

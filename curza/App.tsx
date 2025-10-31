@@ -10,7 +10,7 @@ import SignUpScreen from './src/screens/SignUpScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ResultDetailScreen from './src/screens/ResultDetailScreen';
-
+import TestRunnerScreen from './src/screens/TestRunnerScreen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
@@ -46,6 +46,20 @@ export type RootStackParamList = {
   Results: undefined;
   ProfileSettings: undefined;
   ResultDetail: { result: ResultRow };
+  TestRunner: {
+    mode: 'section' | 'full';
+    title: string;
+    subject: string;
+    totalMarks: number;
+    timed?: boolean;
+    durationSec?: number;
+    // section-specific
+    topic?: string;
+    count?: number;
+    // full-exam-specific
+    examType?: string;
+    grade?: string | number;
+  };
 };
 
 // Type the stack with RootStackParamList
@@ -73,11 +87,8 @@ function SignedInStack() {
       <Stack.Screen name="PracticeTests" component={PracticeTestsScreen} />
       <Stack.Screen name="Results" component={ResultsScreen} />
       <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
-      <Stack.Screen
-        name="ResultDetail"
-        component={ResultDetailScreen}
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="ResultDetail" component={ResultDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="TestRunner" component={TestRunnerScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

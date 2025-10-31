@@ -1,3 +1,4 @@
+// src/components/FullExamPanel.tsx
 import React, { useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 
@@ -7,6 +8,7 @@ export type FullExamParams = {
   mode: 'full';
   examType: string; // e.g. "Paper 1"
   timed: boolean;
+  durationSec?: number;
 };
 
 type Props = {
@@ -20,6 +22,8 @@ export default function FullExamPanel({ subject, grade, papers, onStart }: Props
   const [showPaperDrop, setShowPaperDrop] = useState(false);
   const [paper, setPaper] = useState<string | undefined>(undefined);
   const [timed, setTimed] = useState(false);
+
+  const canStart = Boolean(paper);
 
   return (
     <View style={s.panel}>
@@ -59,25 +63,27 @@ export default function FullExamPanel({ subject, grade, papers, onStart }: Props
       {/* Time constraint */}
       <View style={s.footer}>
         <Pressable style={s.timeRow} onPress={() => setTimed((v) => !v)} hitSlop={8}>
-            <View style={[s.checkbox, timed && s.checkboxOn]} />
-            <Text style={s.timeLabel}>Set time constraint.</Text>
+          <View style={[s.checkbox, timed && s.checkboxOn]} />
+          <Text style={s.timeLabel}>Set time constraint.</Text>
         </Pressable>
 
         <Pressable
-            style={s.primaryBtn}
-            onPress={() =>
+          style={[s.primaryBtn, canStart ? s.primaryBtnEnabled : s.primaryBtnDisabled]}
+          disabled={!canStart}
+          onPress={() =>
             onStart({
-                subject,
-                grade,
-                mode: 'full',
-                examType: paper ?? 'Paper 1',
-                timed,
+              subject,
+              grade,
+              mode: 'full',
+              examType: paper ?? 'Paper 1',
+              timed,
+              durationSec: timed ? (3 * 60 * 60) : undefined, // default 3 hours
             })
-            }
+          }
         >
-            <Text style={s.primaryBtnText}>Start Full Exam</Text>
+          <Text style={s.primaryBtnText}>Start Full Exam</Text>
         </Pressable>
-        </View>
+      </View>
     </View>
   );
 }
@@ -101,7 +107,7 @@ const s = StyleSheet.create({
     height: 56,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E6C34A',
+    borderColor: '#FACC15',
     backgroundColor: 'none',
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -119,21 +125,41 @@ const s = StyleSheet.create({
     letterSpacing: 0.4,
     textAlign: 'center',
   },
-  selectChevron: { color: '#FFFFFF', fontSize: 18, marginLeft: 10 },
-
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18, marginBottom: 12 },
-  checkbox: {
-    width: 28, height: 28, borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)',
+  selectChevron: { 
+    color: '#FFFFFF', 
+    fontSize: 18, 
+    marginLeft: 10 
   },
-  checkboxOn: { backgroundColor: '#E5E7EB', borderColor: '#E6C34A' },
-  timeLabel: { color: '#E5E7EB', fontFamily: 'AlumniSans_500Medium', fontSize: 16, letterSpacing: 0.3 },
+
+  timeRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12, 
+    marginTop: 18, 
+    marginBottom: 12 
+  },
+  checkbox: {
+    width: 28, 
+    height: 28, 
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 2, 
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  checkboxOn: { 
+    backgroundColor: '#FACC15', 
+    borderColor: '#FACC15' 
+  },
+  timeLabel: { 
+    color: '#E5E7EB', 
+    fontFamily: 'AlumniSans_500Medium', 
+    fontSize: 16, 
+    letterSpacing: 0.3 
+  },
 
   primaryBtn: {
     height: 54,
     borderRadius: 14,
-    backgroundColor: '#FACC15',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -141,22 +167,59 @@ const s = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-  primaryBtnText: { 
+  primaryBtnEnabled: {
+    backgroundColor: '#FACC15',
+  },
+  primaryBtnDisabled: { 
+    backgroundColor: '#9CA3AF', // grey when disabled
+  },
+  primaryBtnText: {
     color: '#1F2937',
     fontFamily: 'Antonio_700Bold',
-    fontSize: 16, 
-},
+    fontSize: 16,
+  },
 
-  ddBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  ddSheet: { width: '100%', maxWidth: 520, backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16 },
-  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
-  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
-  ddRowText: { fontSize: 16, color: '#1F2937' },
-  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
-  ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
+  ddBackdrop: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.35)', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    padding: 20 
+  },
+  ddSheet: { 
+    width: '100%', 
+    maxWidth: 520, 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 16, 
+    padding: 16 
+  },
+  ddTitle: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#1F2937', 
+    marginBottom: 8 
+  },
+  ddRow: { 
+    paddingVertical: 12, 
+    paddingHorizontal: 8, 
+    borderRadius: 10 
+  },
+  ddRowText: { 
+    fontSize: 16, 
+    color: '#1F2937' 
+  },
+  ddCancel: { 
+    marginTop: 8, 
+    alignSelf: 'flex-end', 
+    padding: 8 
+  },
+  ddCancelText: { 
+    color: '#1F2937', 
+    textDecorationLine: 'underline' 
+  },
 
   footer: {
-  flex: 1,
-  justifyContent: 'flex-end',   
-},
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
 });
