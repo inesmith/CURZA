@@ -9,6 +9,7 @@ import { useFonts as useAlumniFonts, AlumniSans_500Medium } from '@expo-google-f
 import SignUpScreen from './src/screens/SignUpScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
+import ResultDetailScreen from './src/screens/ResultDetailScreen';
 
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -21,11 +22,21 @@ import ProfileSettingsScreen from './src/screens/ProfileScreen';
 
 // NEW
 import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
-import { NoticeProvider } from "./src/contexts/NoticeProvider";
+import { NoticeProvider } from './src/contexts/NoticeProvider';
 
 // Call once at module load
 SplashScreen.preventAutoHideAsync();
 
+// ---- Shared type used by Results and the Detail screen ----
+export type ResultRow = {
+  id: string;
+  paper: string;
+  date: string;
+  score: string;
+  showArrow?: boolean;
+};
+
+// ---- Stack param list (add typed ResultDetail params here) ----
 export type RootStackParamList = {
   SignUp: undefined;
   Login: undefined;
@@ -34,11 +45,13 @@ export type RootStackParamList = {
   PracticeTests: undefined;
   Results: undefined;
   ProfileSettings: undefined;
+  ResultDetail: { result: ResultRow };
 };
 
-const Stack = createStackNavigator();
+// Type the stack with RootStackParamList
+const Stack = createStackNavigator<RootStackParamList>();
 
-// ✅ NEW: split stacks (keeps your routes unchanged)
+// ---- Signed-out stack ----
 function SignedOutStack() {
   return (
     <Stack.Navigator
@@ -51,6 +64,7 @@ function SignedOutStack() {
   );
 }
 
+// ---- Signed-in stack ----
 function SignedInStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
@@ -59,17 +73,23 @@ function SignedInStack() {
       <Stack.Screen name="PracticeTests" component={PracticeTestsScreen} />
       <Stack.Screen name="Results" component={ResultsScreen} />
       <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
+      <Stack.Screen
+        name="ResultDetail"
+        component={ResultDetailScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
 
-//  NEW: gate by auth state
+// ---- Gate by auth state ----
 function RootNav() {
   const { user, loading } = useAuth();
   if (loading) return null; // keep splash until auth ready
   return user ? <SignedInStack /> : <SignedOutStack />;
 }
 
+// ---- App ----
 export default function App() {
   // fonts + splash (unchanged)
   const [fontsALoaded] = useFonts({ Antonio_700Bold });
@@ -98,10 +118,9 @@ export default function App() {
     );
   }
 
-  // ✅ Wrap with AuthProvider and render RootNav
   return (
     <AuthProvider>
-      <NoticeProvider> 
+      <NoticeProvider>
         <NavigationContainer>
           <RootNav />
         </NavigationContainer>
@@ -117,7 +136,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  icon: { width: 160, height: 160, marginBottom: 16 },
+  icon: {
+    width: 160,
+    height: 160,
+    marginBottom: 16,
+  },
   title: {
     fontFamily: 'Antonio_700Bold',
     fontSize: 48,
