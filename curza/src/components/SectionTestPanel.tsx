@@ -170,13 +170,13 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)',
   },
-  checkboxOn: { backgroundColor: '#E5E7EB', borderColor: '#E6C34A' },
+  checkboxOn: { backgroundColor: '#E5E7EB', borderColor: '#FACC15' },
   timeLabel: { color: '#E5E7EB', fontFamily: 'AlumniSans_500Medium', fontSize: 16, letterSpacing: 0.3 },
 
   primaryBtn: {
     height: 54,
     borderRadius: 14,
-    backgroundColor: '#FFD247',
+    backgroundColor: '#FACC15',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

@@ -15,6 +15,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { useResponsive } from '../ui/responsive';
 
+
 import ProgressBlock from '../components/ProgressBlock';
 import ToDoBlock, { TodoItem } from '../components/ToDoBlock';
 import ProgressSummaryBar from '../components/ProgressSummaryBar';
@@ -371,12 +372,14 @@ export default function DashboardScreen() {
                   {/* LEFT */}
                   <View style={s.leftCol}>
                     <ProgressBlock
-                      stats={{
-                        summariesStudied: 15,
-                        chaptersCovered: 25,
-                        quizzesDone: 20,
-                        testsCompleted: 40,
-                      }}
+                      {...({
+                        stats: {
+                          summariesStudied: 15,
+                          chaptersCovered: 25,
+                          quizzesDone: 20,
+                          testsCompleted: 40,
+                        },
+                      } as any)}
                     />
 
                     <View style={{ marginTop: 0 }}>

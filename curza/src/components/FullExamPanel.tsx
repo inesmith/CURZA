@@ -133,7 +133,7 @@ const s = StyleSheet.create({
   primaryBtn: {
     height: 54,
     borderRadius: 14,
-    backgroundColor: '#FFD247',
+    backgroundColor: '#FACC15',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
