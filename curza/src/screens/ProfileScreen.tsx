@@ -17,7 +17,7 @@ export default function ProfileScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { show } = useNotice();
 
-  // --- Profile state (read-only / editable display) ---
+  // Profile state (read-only / editable display)
   const [fullName, setFullName] = useState<string>('');
   const [idNumber, setIdNumber] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -30,7 +30,7 @@ export default function ProfileScreen() {
   const userIdRef = useRef<string | null>(null);
   const originalRef = useRef<any>(null); // to restore on cancel
 
-  // 🔴 Deactivate/Delete modals state
+  // Deactivate/Delete modals state
   const [showActionModal, setShowActionModal] = useState(false);                 // choose Delete or Deactivate
   const [pendingAction, setPendingAction] = useState<'delete' | 'deactivate' | null>(null);
   const [showReasonModal, setShowReasonModal] = useState(false);                 // ask "why"
@@ -38,7 +38,10 @@ export default function ProfileScreen() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);               // final confirmation
   const [busy, setBusy] = useState(false);
 
-  // ✅ Subjects selection modal (checkbox list)
+  // Logout confirm modal
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  // Subjects selection modal
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
   const [tempSubjects, setTempSubjects] = useState<string[]>([]);
 
@@ -63,7 +66,6 @@ export default function ProfileScreen() {
   // Grade-aware subjects list (simple, sensible defaults)
   const getSubjectOptions = (curr: string, g: string | number): string[] => {
     const gg = Number(g);
-    // Core lists (South Africa common CAPS/IEB subjects)
     const core10to12 = [
       'English', 'Afrikaans', 'isiZulu', 'Mathematics', 'Mathematical Literacy', 'Life Orientation',
       'Physical Sciences', 'Life Sciences', 'Geography', 'History',
@@ -80,7 +82,6 @@ export default function ProfileScreen() {
     ];
     if (gg >= 10) return core10to12;
     if (gg >= 8) return core8to9;
-    // fallback
     return core10to12;
   };
 
@@ -263,7 +264,6 @@ export default function ProfileScreen() {
   };
 
   const applySubjectsModal = () => {
-    // keep title case and trimmed
     const cleaned = tempSubjects.map(titleCase).map(s => s.trim()).filter(Boolean);
     setSubjects(cleaned);
     setShowSubjectsModal(false);
@@ -319,7 +319,7 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          {/* Top-right pill area (same slot/size as grade pill) */}
+          {/* Top-right pill area */}
           <View style={s.topRightWrap}>
             {editMode ? (
               <View style={s.row}>
@@ -465,7 +465,8 @@ export default function ProfileScreen() {
                           <Text style={s.deactivateText}>Delete / Deactivate Account</Text>
                         </Pressable>
 
-                        <Pressable style={s.logoutBtn} onPress={handleLogout}>
+                        {/* Logout opens confirm modal */}
+                        <Pressable style={s.logoutBtn} onPress={() => setShowLogoutModal(true)}>
                           <Text style={s.logoutText}>Log Out</Text>
                         </Pressable>
                       </>
@@ -478,7 +479,7 @@ export default function ProfileScreen() {
 
           {/* =====================  MODALS  ===================== */}
 
-          {/* Subjects multi-select (checkbox) */}
+          {/* Subjects multi-select */}
           <Modal transparent visible={showSubjectsModal} animationType="fade" onRequestClose={() => setShowSubjectsModal(false)}>
             <View style={s.modalBackdrop}>
               <View style={s.modalSheet}>
@@ -594,6 +595,35 @@ export default function ProfileScreen() {
             </View>
           </Modal>
 
+          {/* 4) Logout confirmation */}
+          <Modal
+            transparent
+            visible={showLogoutModal}
+            animationType="fade"
+            onRequestClose={() => setShowLogoutModal(false)}
+          >
+            <View style={s.modalBackdrop}>
+              <View style={s.modalSheet}>
+                <Text style={s.modalTitle}>Log out?</Text>
+                <Text style={s.modalText}>Are you sure you want to log out?</Text>
+                <View style={s.modalRow}>
+                  <Pressable
+                    style={[s.modalBtn, s.modalBtnSecondary]}
+                    onPress={() => setShowLogoutModal(false)}
+                  >
+                    <Text style={s.modalBtnTextSecondary}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[s.modalBtn, s.modalBtnPrimary]}
+                    onPress={handleLogout}
+                  >
+                    <Text style={s.modalBtnText}>Log Out</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
           {/* =================== / MODALS =================== */}
         </ImageBackground>
       </View>
@@ -677,7 +707,7 @@ const s = StyleSheet.create({
 
   cornerLogo: { position: 'absolute', bottom: 40, left: -55, height: 130, opacity: 0.9, zIndex: 10 },
 
-  // 🔵 Top-right pill area (matches other screens)
+  // 🔵 Top-right pill area
   topRightWrap: {
     position: 'absolute',
     top: 22,
@@ -741,7 +771,6 @@ const s = StyleSheet.create({
   leftCol: { flexShrink: 0, minWidth: 430 },
   rightCol: { flex: 1, minWidth: 300 },
 
-  // Typography request: labels 18, text 16
   label: {
     color: '#FFFFFF',
     fontFamily: 'AlumniSans_500Medium',
@@ -771,7 +800,7 @@ const s = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Editable input (matches box style)
+  // Editable input 
   inputBoxEditable: {
     height: 44,
     borderRadius: 12,
@@ -830,7 +859,7 @@ const s = StyleSheet.create({
   logoutBtn: {
     height: 48,
     borderRadius: 12,
-    backgroundColor: '#FFD247',
+    backgroundColor: '#EAB308',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,

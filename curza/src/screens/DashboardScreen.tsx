@@ -1,20 +1,9 @@
-// src/screens/DashboardScreen.tsx
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Image,
-  ImageBackground,
-  Modal,
-  ScrollView,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image, ImageBackground, Modal, ScrollView, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { useResponsive } from '../ui/responsive';
-
 
 import ProgressBlock from '../components/ProgressBlock';
 import ToDoBlock, { TodoItem } from '../components/ToDoBlock';
@@ -24,17 +13,7 @@ import FeedbackCard from '../components/FeedbackCard';
 import RecentActivitiesCard from '../components/RecentActivitiesCard';
 
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-} from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 
 import { useNotice } from '../contexts/NoticeProvider';
@@ -72,7 +51,7 @@ const titleCase = (s: any): string =>
     .split(/\s+/)
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
     .join(' ');
-// -----------------------
+// ------- end helpers -------
 
 export default function DashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -92,16 +71,20 @@ export default function DashboardScreen() {
 
   // To-Dos
   const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [suggestedTodos, setSuggestedTodos] = useState<TodoItem[]>([
+    { id: 's1', text: 'REVIEW FACTORISATION STEPS (Q2.2)', isSuggested: true },
+    { id: 's2', text: 'RETRY INEQUALITIES MINI-TEST', isSuggested: true },
+  ]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTodoText, setNewTodoText] = useState('');
 
-  // ---- Auth + Profile & Subjects ----
+  // Auth + Profile & Subjects
   useEffect(() => {
     const auth = getAuth();
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setFirstName('');
-        setTodos([]); // clear if signed out
+        setTodos([]);
         return;
       }
 
@@ -168,7 +151,6 @@ export default function DashboardScreen() {
           },
         );
 
-        // cleanup To-Do listener when auth user changes
         return () => unsubTodos();
       } catch (e) {
         const fallback =
@@ -181,7 +163,7 @@ export default function DashboardScreen() {
     return () => unsubAuth();
   }, [show]);
 
-  // ---- To-Do actions ----
+  // To-Do actions
   const handleAddTodo = async () => {
     setShowAddModal(true);
   };
@@ -221,6 +203,28 @@ export default function DashboardScreen() {
     } catch (e) {
       show('Could not complete the To-Do.', 'error', 2600);
     }
+  };
+
+  const deleteTodo = async (todoId: string) => {
+    const user = getAuth().currentUser;
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'todos', todoId));
+      show('To-Do deleted.');
+    } catch (e) {
+      show('Could not delete the To-Do.', 'error', 2600);
+    }
+  };
+
+  const completeSuggested = (id: string) => {
+    // Hook for progress updates if needed
+    setSuggestedTodos((prev) => prev.filter((t) => t.id !== id));
+    show('Nice! Progress updated.', 'success', 2200);
+  };
+
+  const deleteSuggested = (id: string) => {
+    setSuggestedTodos((prev) => prev.filter((t) => t.id !== id));
+    show('Suggestion removed.', 'success', 1600);
   };
 
   const headingText = firstName
@@ -395,12 +399,19 @@ export default function DashboardScreen() {
                   {/* RIGHT */}
                   <View style={s.rightCol}>
                     <ToDoBlock
-                      items={todos.map((t) => ({
-                        ...t,
-                        onPress: () => {},
-                        // Long-press to complete:
-                        onLongPress: () => completeTodo(t.id),
-                      }))}
+                      items={[
+                        ...suggestedTodos.map<TodoItem>((t) => ({
+                          ...t,
+                          onComplete: () => completeSuggested(t.id),
+                          onDelete: () => deleteSuggested(t.id),
+                        })),
+                        ...todos.map((t) => ({
+                          ...t,
+                          onPress: () => {},
+                          onLongPress: () => completeTodo(t.id), // complete (removes)
+                          onDelete: () => deleteTodo(t.id),     // delete (removes)
+                        })),
+                      ]}
                       onAdd={handleAddTodo}
                     />
 
@@ -430,26 +441,31 @@ export default function DashboardScreen() {
         <View style={s.ddBackdrop}>
           <View style={s.ddSheet}>
             <Text style={s.ddTitle}>Add a To-Do</Text>
+
             <View
               style={{
                 borderWidth: 1,
                 borderColor: '#D1D5DB',
                 borderRadius: 12,
                 paddingHorizontal: 12,
-                paddingVertical: 10,
                 backgroundColor: '#FFFFFF',
                 marginBottom: 12,
               }}
             >
-              <Text
+              <TextInput
+                value={newTodoText}
+                onChangeText={setNewTodoText}
+                placeholder="Type here…"
+                placeholderTextColor="#9CA3AF"
                 style={{
                   fontFamily: 'AlumniSans_500Medium',
                   fontSize: 16,
                   color: '#1F2937',
+                  paddingVertical: 10,
                 }}
-              >
-                {newTodoText || 'Type here…'}
-              </Text>
+                autoFocus
+                returnKeyType="done"
+              />
             </View>
 
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>

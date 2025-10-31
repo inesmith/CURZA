@@ -17,7 +17,6 @@ export default function ExampleSection({
 }) {
   return (
     <View style={s.container}>
-      {/* Left grey box */}
       <View style={s.exampleCard}>
         <Text style={s.exampleTitle}>{exampleTitle}</Text>
         <View style={s.exampleInner}>

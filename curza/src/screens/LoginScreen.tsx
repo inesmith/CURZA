@@ -17,7 +17,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null); // kept, but not rendered
+  const [error, setError] = useState<string | null>(null); 
 
   const { show } = useNotice();
 

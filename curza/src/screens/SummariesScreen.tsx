@@ -5,10 +5,10 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-// AI callables (no UI changes required)
+// AI callables
 import { summarizeAI, buildQuizAI } from '../../firebase';
 
-// Firebase (to read user curriculum/grade/subjects)
+// Firebase 
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -35,7 +35,7 @@ export default function SummariesScreen() {
   const [chapter, setChapter] = useState<string>('Chapter 1');
   const [showChapterDrop, setShowChapterDrop] = useState(false);
 
-  // Minimal helpers (same logic as on Dashboard)
+  // Minimal helpers
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
     if (!raw) return 'CAPS';
@@ -54,7 +54,7 @@ export default function SummariesScreen() {
       .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
 
-  // 🔹 NEW: insert a line break after the 2nd word (no size/layout changes)
+  // line break after the 2nd word
   const formatSubjectTwoLine = (name: string) => {
     const parts = String(name || '').trim().split(/\s+/);
     if (parts.length <= 2) return name; // 1–2 words: unchanged
@@ -101,7 +101,7 @@ export default function SummariesScreen() {
     return () => unsub();
   }, []);
 
-  // Minimal handlers that trigger on long-press (no visual change)
+  // Minimal handlers that trigger on long-press 
   const handleSummarize = async () => {
     try {
       const res = await summarizeAI({
@@ -187,7 +187,7 @@ export default function SummariesScreen() {
         {/* Corner logo */}
         <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
 
-        {/* Main background (Summaries open page) */}
+        {/* Main background */}
         <ImageBackground
           source={require('../../assets/SummariesOpenTab.png')}
           style={s.card}
@@ -203,7 +203,7 @@ export default function SummariesScreen() {
 
           {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
-            {/* Row 1: Curriculum + Grade (UNCHANGED) */}
+            {/* Row 1: Curriculum + Grade */}
             <View style={s.row}>
               <View style={[s.pill, s.curriculumPill]}>
                 <Text style={s.pillTop}>CURRICULUM</Text>
@@ -216,9 +216,9 @@ export default function SummariesScreen() {
               </View>
             </View>
 
-            {/* Row 2: Subject + Chapter (side-by-side, same look) */}
+            {/* Row 2: Subject + Chapter */}
             <View style={s.row2}>
-              {/* Subject dropdown (unchanged look, now with 2-line formatting) */}
+              {/* Subject dropdown */}
               <View style={[s.pill, s.selectPill3]}>
                 <Pressable
                   onPress={() => setShowSubjectDrop(true)}
@@ -232,7 +232,7 @@ export default function SummariesScreen() {
                 </Pressable>
               </View>
 
-              {/* Chapter dropdown (matches subject’s look) */}
+              {/* Chapter dropdown */}
               <View style={[s.pill, s.selectPill2]}>
                 <Pressable
                   onPress={() => setShowChapterDrop(true)}
@@ -310,7 +310,6 @@ export default function SummariesScreen() {
           {/* 🔵 END TOP-RIGHT BLUE BLOCKS */}
 
           <View style={s.cardInner}>
-            {/* Static header area — matches Dashboard behavior */}
             <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
             <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
             <Text style={s.heading}>SUMMARISE YOUR STUDIES</Text>
@@ -323,7 +322,7 @@ export default function SummariesScreen() {
                 contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
                 showsVerticalScrollIndicator
               >
-                {/* Topic bar at top of the scroll box (inline, not a component) */}
+                {/* Topic bar at top of the scroll box */}
                 <View style={s.topicBar}>
                   <Text style={s.topicText}>ALGEBRA – SIMPLIFYING EXPRESSIONS</Text>
                 </View>
@@ -394,12 +393,11 @@ const s = StyleSheet.create({
     position: 'relative',
   },
 
-  // Base text wrapper (left rail anchor)
   tabTextWrapper: {
     position: 'absolute',
     left: '4.5%',
     alignItems: 'center',
-    zIndex: 6, // above rail art
+    zIndex: 6, 
   },
 
   // Positions
@@ -453,7 +451,7 @@ const s = StyleSheet.create({
     zIndex: 2,
   },
 
-  // 🔵 top-right container (inside the card)
+  // 🔵 top-right container 
   topRightWrap: {
     position: 'absolute',
     top: 22,
@@ -506,7 +504,6 @@ const s = StyleSheet.create({
     height: 55,
   },
 
-  // 🔹 New: small selector pill used for Subject + Chapter (side-by-side)
   selectPill: {
     flexGrow: 0,
     width: 170,   
