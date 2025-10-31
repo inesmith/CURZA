@@ -299,7 +299,6 @@ export default function PractiseScreen() {
           {/* 🔵 END TOP-RIGHT BLOCKS */}
 
           <View style={s.cardInner}>
-            {/* 🚫 Removed the outer page ScrollView (like Dashboard) */}
             <Image
               source={require('../../assets/swoosh-yellow.png')}
               style={s.swoosh}
@@ -336,7 +335,7 @@ export default function PractiseScreen() {
                   onStart={startFull}
                 />
               </View>
-              {/* Info banner under panels */}
+              {/* Info banner*/}
                 <View style={s.infoBanner}>
                   <Text style={s.infoText}>
                     FULL EXAMS FOLLOW THE OFFICIAL CAPS STRUCTURE AND INCLUDE MULTIPLE SECTIONS.{'\n'}
@@ -446,7 +445,6 @@ const s = StyleSheet.create({
   ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
   ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
 
-  // --- Heading visuals (unchanged)
   swoosh: {
     position: 'absolute',
     top: 20,
@@ -519,7 +517,7 @@ const s = StyleSheet.create({
   marginBottom: 18,
   },
   infoBanner: {
-  backgroundColor: '#2763F6', // your bright Curza blue
+  backgroundColor: '#2763F6',
   borderRadius: 18,
   paddingVertical: 14,
   paddingHorizontal: 22,

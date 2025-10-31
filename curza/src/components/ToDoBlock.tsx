@@ -4,8 +4,11 @@ import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 export type TodoItem = {
   id: string;
   text: string;
+  isSuggested?: boolean;
   onPress?: () => void;
-  onLongPress?: () => void; // NEW: complete handler
+  onLongPress?: () => void;   // complete for user-created (removes)
+  onComplete?: () => void;    // apply+remove for suggested
+  onDelete?: () => void;      // delete without completing (both kinds)
 };
 
 export default function ToDoBlock({
@@ -33,7 +36,17 @@ export default function ToDoBlock({
   };
 
   const confirmComplete = () => {
-    active?.onLongPress?.(); // call through to Dashboard's completeTodo
+    if (!active) return;
+    if (active.isSuggested) {
+      active.onComplete?.();
+    } else {
+      active.onLongPress?.();
+    }
+    closeMenu();
+  };
+
+  const handleDelete = () => {
+    active?.onDelete?.();
     closeMenu();
   };
 
@@ -68,7 +81,9 @@ export default function ToDoBlock({
       >
         <View style={s.backdrop}>
           <View style={s.sheet}>
-            <Text style={s.sheetTitle}>Mark as completed?</Text>
+            <Text style={s.sheetTitle}>
+              {active?.isSuggested ? 'Apply this suggestion?' : 'Mark as completed?'}
+            </Text>
             <Text style={s.sheetText}>
               {active?.text ?? ''}
             </Text>
@@ -76,6 +91,9 @@ export default function ToDoBlock({
             <View style={s.sheetRow}>
               <Pressable style={[s.btn, s.btnGhost]} onPress={closeMenu}>
                 <Text style={s.btnGhostTxt}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[s.btn, s.btnDanger]} onPress={handleDelete}>
+                <Text style={s.btnDangerTxt}>Delete</Text>
               </Pressable>
               <Pressable style={[s.btn, s.btnPrimary]} onPress={confirmComplete}>
                 <Text style={s.btnTxt}>Complete</Text>
@@ -203,22 +221,22 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  btnPrimary: {
-    backgroundColor: '#2763F6',
-  },
-
-  btnGhost: {
-    backgroundColor: '#E5E7EB',
-  },
+  btnPrimary: { backgroundColor: '#2763F6' },
+  btnGhost: { backgroundColor: '#E5E7EB' },
+  btnDanger: { backgroundColor: '#EF4444' },
 
   btnTxt: {
     color: '#FFFFFF',
     fontFamily: 'Antonio_700Bold',
     fontSize: 16,
   },
-
   btnGhostTxt: {
     color: '#1F2937',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 16,
+  },
+  btnDangerTxt: {
+    color: '#FFFFFF',
     fontFamily: 'Antonio_700Bold',
     fontSize: 16,
   },

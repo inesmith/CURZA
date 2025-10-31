@@ -16,15 +16,14 @@ import { useNotice } from "../contexts/NoticeProvider";
 import Select, { Option } from "../ui/Select";
 import MultiSelect from "../ui/MultiSelect";
 
-// ✅ data folder
-import { CURRICULUMS } from "../data/curriculums";   // string[]
-import { LANGUAGES } from "../data/languages";       // string[]
-import { SUBJECTS } from "../data/subjects";         // { junior: string[]; senior: string[]; }
+// data folder
+import { CURRICULUMS } from "../data/curriculums";  
+import { LANGUAGES } from "../data/languages";       
+import { SUBJECTS } from "../data/subjects";      
 
-// 🔥 Firestore
+// Firestore
 import { getAuth } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-// adjust the path to where you export `db`
 import { db } from '../../firebase';
 
 export default function SignUpScreen() {
@@ -33,16 +32,14 @@ export default function SignUpScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   const [fullName, setFullName] = useState('');
-  const [idNumber, setIdNumber] = useState(''); // optional, preserved
+  const [idNumber, setIdNumber] = useState(''); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null); // not rendered
+  const [error, setError] = useState<string | null>(null); 
 
   const { show } = useNotice();
 
-  // ──────────────────────────────────────────────────────────────────────────────
-  // helpers to keep your Select/MultiSelect API (Option[]) while using data folder
   const toOptions = (arr: string[]): Option[] =>
     arr.map((label) => ({
       label,
@@ -55,7 +52,7 @@ export default function SignUpScreen() {
 
   const dedupeByLabel = (arr: string[]) => Array.from(new Set(arr));
 
-  // language-specific subjects we must include (both phases)
+  // language-specific subjects 
   const LANG_SPECIFIC = [
     "English Home Language",
     "English First Additional Language",
@@ -74,7 +71,7 @@ export default function SignUpScreen() {
   );
   const LANGS: Option[] = useMemo(() => toOptions(LANGUAGES), []);
 
-  // subjects by phase, merged with HL/FAL variants + de-duplicated
+  // subjects by phase, merged with HL/FAL
   const JUNIOR_SUBJECT_OPTIONS: Option[] = useMemo(() => {
     const merged = dedupeByLabel([...LANG_SPECIFIC, ...SUBJECTS.junior]);
     return toOptions(merged);
@@ -84,7 +81,7 @@ export default function SignUpScreen() {
     return toOptions(merged);
   }, []);
 
-  // Controlled selections (keep your UI/state names)
+  // Controlled selections
   const [curriculum, setCurriculum] = useState<string | null>(null);
   const [grade, setGrade] = useState<string | null>(null);
   const [language, setLanguage] = useState<string | null>(null);
@@ -139,7 +136,7 @@ export default function SignUpScreen() {
             curriculum,                 // stored as the selected label (since value === label)
             grade: parseInt(grade!, 10),
             language,                   // selected label
-            subjects,                   // array of subject values (slugged labels)
+            subjects,                   // array of subject values
             centre,                     // learning centre checkbox
             updatedAt: serverTimestamp(),
             createdAt: serverTimestamp(),
@@ -225,7 +222,7 @@ export default function SignUpScreen() {
                     onChangeText={setPassword}
                   />
 
-                  {/* Dropdowns (looks identical to your inputs) */}
+                  {/* Dropdowns */}
                   <Text style={s.label}>Grade</Text>
                   <Select
                     placeholder="Select Your Grade"

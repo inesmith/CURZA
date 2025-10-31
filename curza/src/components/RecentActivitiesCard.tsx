@@ -4,9 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 export type ActivityItem = {
   id: string;
   text: string;
-  /** can be number (65) or string ('65%'); optional */
   score?: number | string;
-  /** show the yellow arrow on the right for this row */
   showArrow?: boolean;
 };
 
@@ -47,7 +45,7 @@ export default function RecentActivitiesCard({
 
 const s = StyleSheet.create({
   card: {
-    backgroundColor: '#6B7280',        // grey card
+    backgroundColor: '#6B7280',       
     borderRadius: 22,
     paddingVertical: 16,
     paddingHorizontal: 14,
@@ -56,7 +54,7 @@ const s = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
-    maxWidth: 440,                      // adjust to your layout
+    maxWidth: 440,                     
     alignSelf: 'stretch',
   },
 
@@ -107,7 +105,6 @@ const s = StyleSheet.create({
     opacity: 0.9,
   },
 
-  // small yellow triangle arrow on the right (outside the pill)
   arrow: {
     position: 'absolute',
     right: -10,

@@ -27,17 +27,17 @@ import { db } from '../../firebase';
 type NavParams = {
   paper?: string;
   date?: string;
-  score?: string;        // "72%"
-  marksEarned?: number;  // 108
-  marksTotal?: number;   // 150
-  outcome?: string;      // "ON TRACK"
+  score?: string;        
+  marksEarned?: number;  
+  marksTotal?: number;   
+  outcome?: string;     
 };
 
 export default function ResultDetailScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute<any>();
   const {
-    paper = 'YOUR TEST RESULTS',
+    paper = 'REVIEW YOUR TEST',
     date = '—',
     score = '—',
     marksEarned = 0,
@@ -102,7 +102,7 @@ export default function ResultDetailScreen() {
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left rail artwork (keep tabs visible) */}
+        {/* Left rail artwork */}
         <Image source={require('../../assets/DashboardTab.png')}  style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/SummariesTab.png')} style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/PractiseTab.png')}   style={s.tab} resizeMode="contain" />
@@ -206,20 +206,20 @@ export default function ResultDetailScreen() {
                   </Text>
                 </View>
 
-                {/* === ROW 1: Buttons (left) + Topic Breakdown (right) === */}
+                {/* Buttons & Topic Breakdown */}
                 <View style={s.rowInline}>
                   <View style={s.actionsCol}>
                     <View style={s.actionsRow}>
                       <Pressable style={s.actionBtn} onPress={() => {}}>
-                        <Text style={s.actionText}>REVIEW QUESTIONS</Text>
+                        <Text style={s.actionText}>Review Questions</Text>
                       </Pressable>
 
                       <Pressable style={s.actionBtn} onPress={() => {}}>
-                        <Text style={s.actionText}>RETAKE SECTION 10Q</Text>
+                        <Text style={s.actionText}>Retake Section 10Q</Text>
                       </Pressable>
 
                       <Pressable style={s.actionBtn} onPress={() => {}}>
-                        <Text style={s.actionText}>DOWNLOAD PDF</Text>
+                        <Text style={s.actionText}>Download PDF</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -229,7 +229,7 @@ export default function ResultDetailScreen() {
                   </View>
                 </View>
 
-                {/* === ROW 2: Partial Credit (left) + Key Feedback (right) === */}
+                {/* Partial Credit & Key Feedback*/}
                 <View style={s.twoSmallCardsRow}>
                   <PartialCreditCard />
                   <KeyFeedbackTipsCard />
@@ -478,7 +478,7 @@ const s = StyleSheet.create({
     backgroundColor: 'none',
     borderRadius: 16,
     padding: 16,
-    marginTop: 70,
+    marginTop: 40,
     marginLeft: -20,
     marginRight: -40,
     height: 620,
@@ -495,7 +495,7 @@ const s = StyleSheet.create({
     flex: 1,
   },
 
-  // Banner
+  
   banner: {
     borderRadius: 28,
     backgroundColor: 'rgba(148,163,184,0.55)',
@@ -560,7 +560,7 @@ const s = StyleSheet.create({
     lineHeight: 26,
   },
 
-  // Buttons area
+
   actionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-start',
@@ -592,7 +592,6 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // NEW: Inline row for buttons + topic breakdown
   rowInline: {
     flexDirection: 'row',
     gap: 14,
@@ -614,7 +613,7 @@ const s = StyleSheet.create({
   twoSmallCardsRow: {
     flexDirection: 'row',
     gap: 14,
-    marginTop: -228,
+    marginTop: -235,
     alignItems: 'flex-start',
     flexWrap: 'wrap',
   },

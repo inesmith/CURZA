@@ -91,7 +91,7 @@ export default function ResultsScreen() {
         <Image source={require('../../assets/PractiseTab.png')} style={s.tab} resizeMode="contain" />
         <Image source={require('../../assets/ProfileTab.png')} style={s.tab} resizeMode="contain" />
 
-        {/* Left rail labels (RESULTS above PROFILE; higher zIndex to avoid mis-tap) */}
+        {/* Left rail labels */}
         <View style={[s.tabTextWrapper, s.posSummaries, { zIndex: 6 }]}>
           <Pressable onPress={() => navigation.navigate('Summaries')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.summariesTab]}>SUMMARIES</Text>
@@ -196,7 +196,6 @@ export default function ResultsScreen() {
 
           {/* Content */}
           <View style={s.cardInner}>
-            {/* Fixed header (screen itself not scrollable) */}
             <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
             <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
             <Text style={s.heading}>YOUR TEST RESULTS</Text>
@@ -572,7 +571,6 @@ const s = StyleSheet.create({
     marginHorizontal: 14,
   },
 
-  // Yellow triangle arrow (matches RecentActivities)
   arrow: {
     position: 'absolute',
     right: 30,

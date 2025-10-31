@@ -169,7 +169,8 @@ const s = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingLeft: 4,
-    gap: 6,
+    gap: 10,
+    padding: 10,
   },
   legendRow: {
     flexDirection: 'row',
@@ -178,7 +179,6 @@ const s = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 6,
     paddingHorizontal: 8,
-    paddingBottom: 12,
   },
   dot: { width: 9, height: 9, borderRadius: 12, marginRight: 6 },
   legendText: {
