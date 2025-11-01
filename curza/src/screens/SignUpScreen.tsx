@@ -119,7 +119,7 @@ export default function SignUpScreen() {
       setError(null);
       setSubmitting(true);
 
-      // 1) Auth sign up
+      // 1) Auth sign up (sends verification inside authService)
       await signUpWithEmail(email.trim(), password, fullName.trim() || undefined);
 
       // 2) Persist profile to Firestore (merge-safe)
@@ -133,11 +133,11 @@ export default function SignUpScreen() {
             fullName: fullName.trim(),
             idNumber: idNumber.trim() || null,
             email: email.trim().toLowerCase(),
-            curriculum,                 // stored as the selected label (since value === label)
+            curriculum,
             grade: parseInt(grade!, 10),
-            language,                   // selected label
-            subjects,                   // array of subject values
-            centre,                     // learning centre checkbox
+            language,
+            subjects,
+            centre,
             updatedAt: serverTimestamp(),
             createdAt: serverTimestamp(),
           },
@@ -145,7 +145,8 @@ export default function SignUpScreen() {
         );
       }
 
-      show("Account Created – Let’s Start Learning!", "success");
+      // Friendly heads-up to check inbox
+      show("Account created! We’ve sent you a verification email — please verify to log in.", "success");
     } catch (e: any) {
       const msg = humanAuthError(e?.code) || "Something went wrong. Please try again.";
       setError(msg);
@@ -292,6 +293,7 @@ export default function SignUpScreen() {
     </View>
   );
 }
+
 
 const BLUE = '#2563EB';
 const INPUT = '#3B82F6';

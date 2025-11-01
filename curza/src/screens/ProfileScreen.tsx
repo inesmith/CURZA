@@ -7,25 +7,11 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
 // Firebase
-import { getAuth, onAuthStateChanged, signOut, deleteUser } from 'firebase/auth';
+import { onAuthStateChanged, signOut, deleteUser } from 'firebase/auth';
 import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 
 import { useNotice } from "../contexts/NoticeProvider";
-
-const LANG_OPTIONS = [
-  'English',
-  'Afrikaans',
-  'isiZulu',
-  'isiXhosa',
-  'Sesotho',
-  'Sepedi',
-  'Xitsonga',
-  'Setswana',
-  'siSwati',
-  'Tshivenda',
-  'isiNdebele',
-];
 
 export default function ProfileScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -58,10 +44,6 @@ export default function ProfileScreen() {
   // Subjects selection modal
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
   const [tempSubjects, setTempSubjects] = useState<string[]>([]);
-
-  // Language selection modal (subjects-style)
-  const [showLanguageModal, setShowLanguageModal] = useState(false);
-  const [tempLanguage, setTempLanguage] = useState<string>('English');
 
   // Helpers
   const normalizeCurriculum = (value: any): string => {
@@ -103,13 +85,23 @@ export default function ProfileScreen() {
     return core10to12;
   };
 
-  // Load user data
+  // Load user data (guard when user is null to avoid permission errors after logout)
   useEffect(() => {
-    const auth = getAuth();
     const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) return;
-      userIdRef.current = user.uid;
+      if (!user) {
+        // logged out — clear state and stop any reads
+        userIdRef.current = null;
+        setFullName('');
+        setIdNumber('');
+        setEmail('');
+        setCurriculum('CAPS');
+        setGrade('12');
+        setLanguage('English');
+        setSubjects([]);
+        return;
+      }
 
+      userIdRef.current = user.uid;
       setEmail(user.email ?? '');
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
@@ -148,8 +140,9 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     try {
-      await signOut(getAuth());
-      navigation.navigate('Login');
+      await signOut(auth);
+      setShowLogoutModal(false);
+      // RootNav will switch to SignedOutStack (initialRouteName: SignUp)
     } catch (e) {
       console.log('Logout error:', e);
     }
@@ -185,8 +178,8 @@ export default function ProfileScreen() {
       setBusy(false);
       setShowConfirmModal(false);
       show('Your account has been successfully deactivated.');
-      await signOut(getAuth());
-      navigation.navigate('Login');
+      await signOut(auth);
+      // RootNav takes user to SignUp stack automatically
     } catch (e) {
       setBusy(false);
       setShowConfirmModal(false);
@@ -197,7 +190,6 @@ export default function ProfileScreen() {
   const performDelete = async () => {
     try {
       setBusy(true);
-      const auth = getAuth();
       const user = auth.currentUser;
       const uid = userIdRef.current;
       if (!user || !uid) return;
@@ -209,7 +201,7 @@ export default function ProfileScreen() {
       setBusy(false);
       setShowConfirmModal(false);
       show('Your account has been successfully deleted.');
-      navigation.navigate('Login');
+      // auth.currentUser becomes null → RootNav shows SignedOutStack (SignUp)
     } catch (e) {
       setBusy(false);
       setShowConfirmModal(false);
@@ -285,16 +277,6 @@ export default function ProfileScreen() {
     const cleaned = tempSubjects.map(titleCase).map(s => s.trim()).filter(Boolean);
     setSubjects(cleaned);
     setShowSubjectsModal(false);
-  };
-
-  // ===== Language modal handlers (subjects look & feel) =====
-  const openLanguageModal = () => {
-    setTempLanguage(language || 'English');
-    setShowLanguageModal(true);
-  };
-  const applyLanguageModal = () => {
-    setLanguage(titleCase(tempLanguage));
-    setShowLanguageModal(false);
   };
 
   return (
@@ -454,10 +436,13 @@ export default function ProfileScreen() {
 
                     <Text style={[s.label, { marginTop: 16 }]}>Language</Text>
                     {editMode ? (
-                      // open subjects-style modal instead of typing
-                      <Pressable onPress={openLanguageModal} style={[s.inputBoxEditable, { height: 44, justifyContent: 'center' }]}>
-                        <Text style={s.inputText}>{language || 'Select language'}</Text>
-                      </Pressable>
+                      <TextInput
+                        value={language}
+                        onChangeText={(v) => setLanguage(titleCase(v))}
+                        style={s.inputBoxEditable}
+                        placeholder="English / Afrikaans / isiZulu..."
+                        placeholderTextColor="rgba(243,244,246,0.6)"
+                      />
                     ) : (
                       <View style={s.inputBox}><Text style={s.inputText}>{language}</Text></View>
                     )}
@@ -530,43 +515,6 @@ export default function ProfileScreen() {
                     <Text style={s.modalBtnTextSecondary}>Cancel</Text>
                   </Pressable>
                   <Pressable style={[s.modalBtn, s.modalBtnPrimary]} onPress={applySubjectsModal}>
-                    <Text style={s.modalBtnText}>Apply</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
-
-          {/* Language single-select (subjects-style UI) */}
-          <Modal transparent visible={showLanguageModal} animationType="fade" onRequestClose={() => setShowLanguageModal(false)}>
-            <View style={s.modalBackdrop}>
-              <View style={s.modalSheet}>
-                <Text style={s.modalTitle}>Select your language</Text>
-                <Text style={s.modalText}>Choose the language you prefer for the app.</Text>
-
-                <ScrollView style={{ maxHeight: 360 }}>
-                  {LANG_OPTIONS.map(name => {
-                    const active = tempLanguage === name;
-                    return (
-                      <Pressable
-                        key={name}
-                        onPress={() => setTempLanguage(name)}
-                        style={[s.checkRow, { justifyContent: 'space-between' }]}
-                      >
-                        <Text style={s.checkText}>{name}</Text>
-                        <View style={[s.radio, active && s.radioOn]}>
-                          {active ? <View style={s.radioDot} /> : null}
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-
-                <View style={s.modalRow}>
-                  <Pressable style={[s.modalBtn, s.modalBtnSecondary]} onPress={() => setShowLanguageModal(false)}>
-                    <Text style={s.modalBtnTextSecondary}>Cancel</Text>
-                  </Pressable>
-                  <Pressable style={[s.modalBtn, s.modalBtnPrimary]} onPress={applyLanguageModal}>
                     <Text style={s.modalBtnText}>Apply</Text>
                   </Pressable>
                 </View>
@@ -1028,17 +976,5 @@ const s = StyleSheet.create({
     fontFamily: 'Antonio_700Bold',
     fontSize: 16,
     color: '#1F2937',
-  },
-
-  // Small radio for single-select (language)
-  radio: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: '#9CA3AF',
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  radioOn: { borderColor: '#EAB308' },
-  radioDot: {
-    width: 10, height: 10, borderRadius: 6, backgroundColor: '#EAB308',
   },
 });

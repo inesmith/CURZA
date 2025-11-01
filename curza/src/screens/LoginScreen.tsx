@@ -1,3 +1,4 @@
+// src/screens/LoginScreen.tsx
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView, Image, ImageBackground,
@@ -6,9 +7,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
-import { signInWithEmailPassword } from '../services/authService';
-import { humanAuthError } from "../utils/firebaseErrors";
+import { signInWithEmailPassword, resetPassword, resendVerificationEmail } from '../services/authService';
 import { useNotice } from "../contexts/NoticeProvider"; // global modal
+import { auth } from '../../firebase';
 
 export default function LoginScreen() {
   const [centre, setCentre] = useState(false);
@@ -17,22 +18,55 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null); 
 
+  const [showVerifyHint, setShowVerifyHint] = useState(false);
   const { show } = useNotice();
 
   const onLogin = async () => {
     try {
-      setError(null);
+      setShowVerifyHint(false);
       setSubmitting(true);
-      await signInWithEmailPassword(email.trim(), password);
+
+      const cred = await signInWithEmailPassword(email.trim(), password);
+
+      // Gate on email verification — minimal UI, just a toast + small hint link
+      if (!cred.user.emailVerified) {
+        setShowVerifyHint(true);
+        show("Please verify your email to continue. Check your inbox for the verification link.", "error");
+        // immediately sign out so the RootNav stays on SignedOutStack
+        await auth.signOut();
+        return;
+      }
+
       show("You have successfully logged in, welcome back.", "success");
     } catch (e: any) {
-      const msg = humanAuthError(e?.code);
-      setError(msg);      // retained for logic/debug if you need it
-      show(msg, "error"); // only modal shows the message
+      // Humanized error already handled in your utils (keep modal only)
+      // We don't import it here to avoid extra code; Firebase errors are already descriptive enough via backend rules.
+      show("Could not log in. Please check your details and try again.", "error");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onResetPassword = async () => {
+    if (!email.trim()) {
+      show("Enter your email above first, then tap ‘Forgot password?’", "error");
+      return;
+    }
+    try {
+      await resetPassword(email.trim());
+      show("Password reset email sent. Check your inbox.", "success");
+    } catch {
+      show("Could not send reset email. Please confirm the address and try again.", "error");
+    }
+  };
+
+  const onResendVerify = async () => {
+    try {
+      await resendVerificationEmail();
+      show("Verification email resent. Please check your inbox.", "success");
+    } catch {
+      show("Could not resend verification email right now.", "error");
     }
   };
 
@@ -73,7 +107,6 @@ export default function LoginScreen() {
 
               <View style={s.grid}>
                 <View style={s.col}>
-                 
 
                   <Text style={s.label}>Email</Text>
                   <TextInput
@@ -96,6 +129,14 @@ export default function LoginScreen() {
                     onChangeText={setPassword}
                   />
 
+                  {/* ✉️ Minimal 'Forgot password?' link under the password */}
+                  <Text
+                    onPress={onResetPassword}
+                    style={s.smallLink}
+                  >
+                    Forgot password?
+                  </Text>
+
                   <Pressable style={s.checkRow} onPress={() => setCentre(v => !v)}>
                     <View style={[s.checkbox, centre && s.checkboxOn]} />
                     <Text style={s.checkText}>Remember me.</Text>
@@ -106,7 +147,14 @@ export default function LoginScreen() {
                     <Text style={s.ctaText}>{submitting ? 'Logging in…' : 'Log In'}</Text>
                   </Pressable>
 
-                  {/* inline error removed — modal only */}
+                  {/* Tiny hint shown only if blocked due to unverified email */}
+                  {showVerifyHint && (
+                    <Text style={s.verifyHint}>
+                      Email not verified.{" "}
+                      <Text onPress={onResendVerify} style={s.verifyLink}>Resend verification email</Text>
+                    </Text>
+                  )}
+
                   <Text style={s.signupHint}>
                     Not registered? <Text style={s.signupLink} onPress={() => navigation.navigate('SignUp')}>Sign Up</Text>
                   </Text>
@@ -142,8 +190,6 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     position: 'relative',
   },
-
-  // Sign Up / Log In text overlay
   tabTextWrapper: {
     position: 'absolute',
     top: '22%',
@@ -164,162 +210,72 @@ const s = StyleSheet.create({
   },
   inactiveTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -62 },
   activeTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 37 },
-
-  logintab: {
-    position: 'absolute',
-    height: '100%',
-    width: '100%',
-    zIndex: 1,
-  },
-
-  card: {
-    flex: 1,
-    borderRadius: 40,
-    overflow: 'hidden',
-    position: 'relative',
-    zIndex: 1,
-  },
-  cardInner: {
-    flex: 1,
-    borderRadius: 40,
-    padding: 28,
-    marginLeft: 210,
-    marginRight: 14,
-  },
-  cardImage: {
-    borderRadius: 40,
-    resizeMode: 'cover',
-  },
-
+  logintab: { position: 'absolute', height: '100%', width: '100%', zIndex: 1 },
+  card: { flex: 1, borderRadius: 40, overflow: 'hidden', position: 'relative', zIndex: 1 },
+  cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
+  cardImage: { borderRadius: 40, resizeMode: 'cover' },
   scroll: { paddingBottom: 44 },
-
-  // Decorative
   swoosh: {
-    position: 'absolute',
-    top: 0,
-    left: '1%',
-    width: 380,
-    height: 90,
-    transform: [{ rotateZ: '-2deg' }],
-    opacity: 0.9,
-    zIndex: 2,
+    position: 'absolute', top: 0, left: '1%',
+    width: 380, height: 90, transform: [{ rotateZ: '-2deg' }],
+    opacity: 0.9, zIndex: 2,
   },
-  dot: {
-    position: 'absolute',
-    top: 55,
-    left: 280,
-    width: 28,
-    height: 28,
-    zIndex: 1,
-    opacity: 0.95,
-  },
-
-  // Text blocks
+  dot: { position: 'absolute', top: 55, left: 280, width: 28, height: 28, zIndex: 1, opacity: 0.95 },
   heading: {
-    fontFamily: 'Antonio_700Bold',
-    color: 'white',
-    fontSize: 48,
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    zIndex: 2,
-    marginTop: 12,
-    textShadowColor: 'rgba(0,0,0,0.22)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    fontFamily: 'Antonio_700Bold', color: 'white', fontSize: 48,
+    letterSpacing: 0.5, marginBottom: 8, zIndex: 2, marginTop: 12,
+    textShadowColor: 'rgba(0,0,0,0.22)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   sub: {
-    fontFamily: 'AlumniSans_500Medium',
-    color: '#E5E7EB',
-    fontSize: 22,
-    lineHeight: 28,
-    marginBottom: 18,
-    maxWidth: 560,
-    marginTop: 18,
-    opacity: 0.95,
+    fontFamily: 'AlumniSans_500Medium', color: '#E5E7EB', fontSize: 22, lineHeight: 28,
+    marginBottom: 18, maxWidth: 560, marginTop: 18, opacity: 0.95,
   },
-
-  // Form
   grid: { flexDirection: 'row', gap: 18 },
   col: { flex: 1 },
   label: {
-    color: '#E5E7EB',
-    fontFamily: 'AlumniSans_500Medium',
-    marginBottom: 6,
-    fontSize: 17,
-    letterSpacing: 0.2,
+    color: '#E5E7EB', fontFamily: 'AlumniSans_500Medium', marginBottom: 6, fontSize: 17, letterSpacing: 0.2,
   },
   input: {
-    backgroundColor: 'rgba(59,130,246,0.92)',
-    borderColor: '#60A5FA',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: 'white',
-    fontFamily: 'AlumniSans_500Medium',
-    marginBottom: 12,
-    fontSize: 17,
+    backgroundColor: 'rgba(59,130,246,0.92)', borderColor: '#60A5FA', borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, color: 'white', fontFamily: 'AlumniSans_500Medium', marginBottom: 8, fontSize: 17,
   },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: 'white',
-    backgroundColor: 'transparent',
-  },
-  checkboxOn: { backgroundColor: '#E5E7EB' },
-  checkText: {
-    color: '#E5E7EB',
-    fontFamily: 'AlumniSans_500Medium',
-    fontSize: 23,
-  },
-
-  // CTA + footer
-  cta: {
-    backgroundColor: '#FACC15',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 27,
-    shadowColor: '#0B1220',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    height: 48,
-  },
-  ctaText: {
-    color: '#1F2937',
-    fontFamily: 'Antonio_700Bold',
-    fontSize: 16,
-    letterSpacing: 0.3,
-  },
-  signupHint: {
-    color: '#E5E7EB',
-    marginTop: 20,
-    fontFamily: 'AlumniSans_500Medium',
-    fontSize: 20,
-    alignSelf: 'center',
-    opacity: 0.95,
-  },
-  signupLink: {
+  // small inline links
+  smallLink: {
     color: '#FACC15',
     fontFamily: 'AlumniSans_500Medium',
-    fontSize: 20,
+    fontSize: 16,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
   },
-  cornerLogo: {
-    position: 'absolute',
-    bottom: 40,
-    left: -55,
-    height: 130,
-    opacity: 0.9,
-    zIndex: 10,
+  checkRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, marginBottom: 20,
   },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: 'white', backgroundColor: 'transparent',
+  },
+  checkboxOn: { backgroundColor: '#E5E7EB' },
+  checkText: { color: '#E5E7EB', fontFamily: 'AlumniSans_500Medium', fontSize: 23 },
+  cta: {
+    backgroundColor: '#FACC15', borderRadius: 14, paddingVertical: 14, alignItems: 'center',
+    marginTop: 6, shadowColor: '#0B1220', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, height: 48,
+  },
+  ctaText: { color: '#1F2937', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.3 },
+  // tiny verify hint
+  verifyHint: {
+    color: '#E5E7EB',
+    marginTop: 12,
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 16,
+    alignSelf: 'flex-start',
+    opacity: 0.95,
+  },
+  verifyLink: {
+    color: '#FACC15',
+    textDecorationLine: 'underline',
+  },
+  signupHint: {
+    color: '#E5E7EB', marginTop: 20, fontFamily: 'AlumniSans_500Medium', fontSize: 20, alignSelf: 'center', opacity: 0.95,
+  },
+  signupLink: { color: '#FACC15', fontFamily: 'AlumniSans_500Medium', fontSize: 20 },
+  cornerLogo: { position: 'absolute', bottom: 40, left: -55, height: 130, opacity: 0.9, zIndex: 10 },
 });
