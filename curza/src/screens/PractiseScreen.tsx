@@ -248,11 +248,15 @@ export default function PractiseScreen() {
             <View style={s.row}>
               <View style={[s.pill, s.curriculumPill]}>
                 <Text style={s.pillTop}>CURRICULUM</Text>
-                <Text style={s.pillMain}>{String(curriculum).toUpperCase()}</Text>
+                <Text style={s.pillMain} numberOfLines={1}>
+                  {String(curriculum).toUpperCase()}
+                </Text>
               </View>
               <View style={[s.pill, s.gradePill]}>
                 <Text style={s.pillTop}>GRADE</Text>
-                <Text style={s.pillMain}>{String(grade).toUpperCase()}</Text>
+                <Text style={s.pillMain} numberOfLines={1}>
+                  {String(grade).toUpperCase()}
+                </Text>
               </View>
             </View>
 
@@ -263,9 +267,11 @@ export default function PractiseScreen() {
                 hitSlop={6}
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
               >
-                <View>
+                <View style={{ flexShrink: 1, paddingRight: 8 }}>
                   <Text style={s.pillTop}>SUBJECT</Text>
-                  <Text style={s.pillMain}>{subject}</Text>
+                  <Text style={s.pillMain} numberOfLines={1}>
+                    {subject}
+                  </Text>
                 </View>
                 <Text style={s.chev}>▾</Text>
               </Pressable>
