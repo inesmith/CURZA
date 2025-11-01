@@ -13,6 +13,20 @@ import { db } from '../../firebase';
 
 import { useNotice } from "../contexts/NoticeProvider";
 
+const LANG_OPTIONS = [
+  'English',
+  'Afrikaans',
+  'isiZulu',
+  'isiXhosa',
+  'Sesotho',
+  'Sepedi',
+  'Xitsonga',
+  'Setswana',
+  'siSwati',
+  'Tshivenda',
+  'isiNdebele',
+];
+
 export default function ProfileScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { show } = useNotice();
@@ -44,6 +58,10 @@ export default function ProfileScreen() {
   // Subjects selection modal
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
   const [tempSubjects, setTempSubjects] = useState<string[]>([]);
+
+  // Language selection modal (subjects-style)
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [tempLanguage, setTempLanguage] = useState<string>('English');
 
   // Helpers
   const normalizeCurriculum = (value: any): string => {
@@ -269,6 +287,16 @@ export default function ProfileScreen() {
     setShowSubjectsModal(false);
   };
 
+  // ===== Language modal handlers (subjects look & feel) =====
+  const openLanguageModal = () => {
+    setTempLanguage(language || 'English');
+    setShowLanguageModal(true);
+  };
+  const applyLanguageModal = () => {
+    setLanguage(titleCase(tempLanguage));
+    setShowLanguageModal(false);
+  };
+
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
@@ -426,13 +454,10 @@ export default function ProfileScreen() {
 
                     <Text style={[s.label, { marginTop: 16 }]}>Language</Text>
                     {editMode ? (
-                      <TextInput
-                        value={language}
-                        onChangeText={(v) => setLanguage(titleCase(v))}
-                        style={s.inputBoxEditable}
-                        placeholder="English / Afrikaans / isiZulu..."
-                        placeholderTextColor="rgba(243,244,246,0.6)"
-                      />
+                      // open subjects-style modal instead of typing
+                      <Pressable onPress={openLanguageModal} style={[s.inputBoxEditable, { height: 44, justifyContent: 'center' }]}>
+                        <Text style={s.inputText}>{language || 'Select language'}</Text>
+                      </Pressable>
                     ) : (
                       <View style={s.inputBox}><Text style={s.inputText}>{language}</Text></View>
                     )}
@@ -505,6 +530,43 @@ export default function ProfileScreen() {
                     <Text style={s.modalBtnTextSecondary}>Cancel</Text>
                   </Pressable>
                   <Pressable style={[s.modalBtn, s.modalBtnPrimary]} onPress={applySubjectsModal}>
+                    <Text style={s.modalBtnText}>Apply</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Language single-select (subjects-style UI) */}
+          <Modal transparent visible={showLanguageModal} animationType="fade" onRequestClose={() => setShowLanguageModal(false)}>
+            <View style={s.modalBackdrop}>
+              <View style={s.modalSheet}>
+                <Text style={s.modalTitle}>Select your language</Text>
+                <Text style={s.modalText}>Choose the language you prefer for the app.</Text>
+
+                <ScrollView style={{ maxHeight: 360 }}>
+                  {LANG_OPTIONS.map(name => {
+                    const active = tempLanguage === name;
+                    return (
+                      <Pressable
+                        key={name}
+                        onPress={() => setTempLanguage(name)}
+                        style={[s.checkRow, { justifyContent: 'space-between' }]}
+                      >
+                        <Text style={s.checkText}>{name}</Text>
+                        <View style={[s.radio, active && s.radioOn]}>
+                          {active ? <View style={s.radioDot} /> : null}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={s.modalRow}>
+                  <Pressable style={[s.modalBtn, s.modalBtnSecondary]} onPress={() => setShowLanguageModal(false)}>
+                    <Text style={s.modalBtnTextSecondary}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={[s.modalBtn, s.modalBtnPrimary]} onPress={applyLanguageModal}>
                     <Text style={s.modalBtnText}>Apply</Text>
                   </Pressable>
                 </View>
@@ -966,5 +1028,17 @@ const s = StyleSheet.create({
     fontFamily: 'Antonio_700Bold',
     fontSize: 16,
     color: '#1F2937',
+  },
+
+  // Small radio for single-select (language)
+  radio: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 2, borderColor: '#9CA3AF',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  radioOn: { borderColor: '#EAB308' },
+  radioDot: {
+    width: 10, height: 10, borderRadius: 6, backgroundColor: '#EAB308',
   },
 });
