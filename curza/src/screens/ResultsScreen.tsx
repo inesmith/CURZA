@@ -85,39 +85,43 @@ export default function ResultsScreen() {
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left rail artwork */}
-        <Image source={require('../../assets/DashboardTab.png')} style={s.tab} resizeMode="contain" />
-        <Image source={require('../../assets/SummariesTab.png')} style={s.tab} resizeMode="contain" />
-        <Image source={require('../../assets/PractiseTab.png')} style={s.tab} resizeMode="contain" />
-        <Image source={require('../../assets/ProfileTab.png')} style={s.tab} resizeMode="contain" />
+        {/* Left rail artwork (decorative, non-interactive) */}
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Image source={require('../../assets/DashboardTab.png')} style={s.tab} resizeMode="contain" />
+          <Image source={require('../../assets/SummariesTab.png')} style={s.tab} resizeMode="contain" />
+          <Image source={require('../../assets/PractiseTab.png')} style={s.tab} resizeMode="contain" />
+          <Image source={require('../../assets/ProfileTab.png')} style={s.tab} resizeMode="contain" />
+        </View>
 
-        {/* Left rail labels */}
-        <View style={[s.tabTextWrapper, s.posSummaries, { zIndex: 6 }]}>
+        {/* Left rail labels (tappable) */}
+        <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable onPress={() => navigation.navigate('Summaries')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.summariesTab]}>SUMMARIES</Text>
           </Pressable>
         </View>
 
-        <View style={[s.tabTextWrapper, s.posPractice, { zIndex: 6 }]}>
+        <View style={[s.tabTextWrapper, s.posPractice]}>
           <Pressable onPress={() => navigation.navigate('PracticeTests')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
           </Pressable>
         </View>
 
-        <View style={[s.tabTextWrapper, s.posResults, { zIndex: 7 }]}>
+        <View style={[s.tabTextWrapper, s.posResults]}>
           <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.resultsTab]}>RESULTS</Text>
           </Pressable>
         </View>
 
-        <View style={[s.tabTextWrapper, s.posProfile, { zIndex: 5 }]}>
+        <View style={[s.tabTextWrapper, s.posProfile]}>
           <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.profileTab]}>PROFILE & SETTINGS</Text>
           </Pressable>
         </View>
 
-        {/* Corner logo */}
-        <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
+        {/* Corner logo (decorative, non-interactive) */}
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, top: 0 }}>
+          <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
+        </View>
 
         {/* Main background */}
         <ImageBackground
@@ -152,9 +156,11 @@ export default function ResultsScreen() {
                 hitSlop={6}
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
               >
-                <View>
+                <View style={{ flexShrink: 1, minWidth: 0 }}>
                   <Text style={s.pillTop}>SUBJECT</Text>
-                  <Text style={s.pillMain}>{subject}</Text>
+                  <Text style={s.pillMain} numberOfLines={1} ellipsizeMode="tail">
+                    {subject}
+                  </Text>
                 </View>
                 <Text style={s.chev}>▾</Text>
               </Pressable>
@@ -208,24 +214,23 @@ export default function ResultsScreen() {
                 showsVerticalScrollIndicator
               >
                 {SAMPLE_RESULTS.map((r) => (
-                <View key={r.id} style={s.resultRowWrap}>
-                  <Pressable
-                    style={s.resultRow}
-                    onPress={() => {
-                      // Pass the whole ResultRow to ResultDetail
-                      navigation.navigate('ResultDetail', { result: r });
-                    }}
-                  >
-                    <Text style={s.resultPaper}>{r.paper}</Text>
-                    <Text style={s.sep}>·</Text>
-                    <Text style={s.resultDate}>{r.date}</Text>
-                    <Text style={s.sep}>·</Text>
-                    <Text style={s.resultScore}>{r.score}</Text>
-                  </Pressable>
+                  <View key={r.id} style={s.resultRowWrap}>
+                    <Pressable
+                      style={s.resultRow}
+                      onPress={() => {
+                        navigation.navigate('ResultDetail', { result: r });
+                      }}
+                    >
+                      <Text style={s.resultPaper}>{r.paper}</Text>
+                      <Text style={s.sep}>·</Text>
+                      <Text style={s.resultDate}>{r.date}</Text>
+                      <Text style={s.sep}>·</Text>
+                      <Text style={s.resultScore}>{r.score}</Text>
+                    </Pressable>
 
-                  {r.showArrow && <View style={s.arrow} />}
-                </View>
-              ))}
+                    {r.showArrow && <View style={s.arrow} />}
+                  </View>
+                ))}
               </ScrollView>
             </View>
           </View>
@@ -260,27 +265,14 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: '4.5%',
     alignItems: 'center',
+    zIndex: 20, // ensure labels are above decorative images
   },
 
-  posActive: {
-    top: '15%',
-  },
-
-  posSummaries: {
-    top: '22%',
-  },
-
-  posPractice: {
-    top: '30%',
-  },
-
-  posResults: {
-    top: '39%',
-  },
-
-  posProfile: {
-    top: '48%',
-  },
+  posActive: { top: '15%' },
+  posSummaries: { top: '22%' },
+  posPractice: { top: '30%' },
+  posResults: { top: '39%' },
+  posProfile: { top: '48%' },
 
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
@@ -294,58 +286,19 @@ const s = StyleSheet.create({
     color: '#E5E7EB',
   },
 
-  dashboardTab: {
-    fontWeight: 'bold',
-    marginTop: -115,
-  },
+  dashboardTab: { fontWeight: 'bold', marginTop: -115 },
+  summariesTab: { opacity: 0.8, marginTop: -15 },
+  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
+  resultsTab: { opacity: 0.8, marginTop: 45 },
+  profileTab: { opacity: 0.8, marginTop: 72 },
 
-  summariesTab: {
-    opacity: 0.8,
-    marginTop: -15,
-  },
+  tab: { position: 'absolute', height: '100%', width: '100%', zIndex: 1 },
 
-  practiseOpenTab: {
-    opacity: 0.8,
-    marginTop: 20,
-  },
+  card: { flex: 1, borderRadius: 40, overflow: 'hidden', position: 'relative', zIndex: 1 },
 
-  resultsTab: {
-    opacity: 0.8,
-    marginTop: 45,
-  },
+  cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
 
-  profileTab: {
-    opacity: 0.8,
-    marginTop: 72,
-  },
-
-  tab: {
-    position: 'absolute',
-    height: '100%',
-    width: '100%',
-    zIndex: 1,
-  },
-
-  card: {
-    flex: 1,
-    borderRadius: 40,
-    overflow: 'hidden',
-    position: 'relative',
-    zIndex: 1,
-  },
-
-  cardInner: {
-    flex: 1,
-    borderRadius: 40,
-    padding: 28,
-    marginLeft: 210,
-    marginRight: 14,
-  },
-
-  cardImage: {
-    borderRadius: 40,
-    resizeMode: 'cover',
-  },
+  cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
   swoosh: {
     position: 'absolute',
@@ -358,14 +311,7 @@ const s = StyleSheet.create({
     zIndex: 2,
   },
 
-  dot: {
-    position: 'absolute',
-    top: 100,
-    left: 330,
-    height: '5%',
-    zIndex: 1,
-    opacity: 0.95,
-  },
+  dot: { position: 'absolute', top: 100, left: 330, height: '5%', zIndex: 1, opacity: 0.95 },
 
   heading: {
     fontFamily: 'Antonio_700Bold',
@@ -381,13 +327,7 @@ const s = StyleSheet.create({
   },
 
   // 🔵 Top-right pills
-  topRightWrap: {
-    position: 'absolute',
-    top: 22,
-    right: 26,
-    zIndex: 7,
-    width: 360,
-  },
+  topRightWrap: { position: 'absolute', top: 22, right: 26, zIndex: 7, width: 360 },
 
   row: {
     flexDirection: 'row',
@@ -432,6 +372,7 @@ const s = StyleSheet.create({
     height: 55,
     alignSelf: 'flex-end',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
 
   pillTop: {
@@ -449,11 +390,7 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
 
-  chev: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    marginLeft: 8,
-  },
+  chev: { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
 
   // Subject dropdown modal
   ddBackdrop: {
@@ -464,42 +401,17 @@ const s = StyleSheet.create({
     padding: 20,
   },
 
-  ddSheet: {
-    width: '100%',
-    maxWidth: 520,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
-  },
+  ddSheet: { width: '100%', maxWidth: 520, backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16 },
 
-  ddTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
+  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
 
-  ddRow: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-  },
+  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
 
-  ddRowText: {
-    fontSize: 16,
-    color: '#1F2937',
-  },
+  ddRowText: { fontSize: 16, color: '#1F2937' },
 
-  ddCancel: {
-    marginTop: 8,
-    alignSelf: 'flex-end',
-    padding: 8,
-  },
+  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
 
-  ddCancelText: {
-    color: '#1F2937',
-    textDecorationLine: 'underline',
-  },
+  ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
 
   // Scrollable block
   bigBlock: {
@@ -519,15 +431,10 @@ const s = StyleSheet.create({
     elevation: 3,
   },
 
-  bigBlockScroll: {
-    flex: 1,
-  },
+  bigBlockScroll: { flex: 1 },
 
   // Result rows
-  resultRowWrap: {
-    position: 'relative',
-    marginBottom: 18,
-  },
+  resultRowWrap: { position: 'relative', marginBottom: 18 },
 
   resultRow: {
     borderRadius: 28,
@@ -542,34 +449,13 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
 
-  resultPaper: {
-    color: '#F9FAFB',
-    fontFamily: 'Antonio_700Bold',
-    fontSize: 16,
-    letterSpacing: 0.3,
-  },
+  resultPaper: { color: '#F9FAFB', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.3 },
 
-  resultDate: {
-    color: '#F9FAFB',
-    fontFamily: 'Antonio_700Bold',
-    fontSize: 16,
-    letterSpacing: 0.3,
-  },
+  resultDate: { color: '#F9FAFB', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.3 },
 
-  resultScore: {
-    color: '#F9FAFB',
-    fontFamily: 'Antonio_700Bold',
-    fontSize: 16,
-    letterSpacing: 0.3,
-  },
+  resultScore: { color: '#F9FAFB', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.3 },
 
-  sep: {
-    color: '#F9FAFB',
-    opacity: 0.75,
-    fontFamily: 'Antonio_700Bold',
-    fontSize: 16,
-    marginHorizontal: 14,
-  },
+  sep: { color: '#F9FAFB', opacity: 0.75, fontFamily: 'Antonio_700Bold', fontSize: 16, marginHorizontal: 14 },
 
   arrow: {
     position: 'absolute',
@@ -586,12 +472,5 @@ const s = StyleSheet.create({
     borderLeftColor: '#FACC15',
   },
 
-  cornerLogo: {
-    position: 'absolute',
-    bottom: 40,
-    left: -55,
-    height: 130,
-    opacity: 0.9,
-    zIndex: 10,
-  },
+  cornerLogo: { position: 'absolute', bottom: 40, left: -55, height: 130, opacity: 0.9, zIndex: 10 },
 });

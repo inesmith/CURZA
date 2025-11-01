@@ -1,14 +1,23 @@
 // src/screens/SummariesScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Image, ImageBackground, Modal, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Image,
+  ImageBackground,
+  Modal,
+  ScrollView,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
 // AI callables
-import { summarizeAI, buildQuizAI } from '../../firebase';
+import { summarizeAI, createTestAI } from '../../firebase';
 
-// Firebase 
+// Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -20,22 +29,23 @@ import ExampleSection from '../components/ExampleSection';
 import TipBoxCard from '../components/TipBoxCard';
 
 export default function SummariesScreen() {
-  const [centre, setCentre] = useState(false);
-  const [terms, setTerms] = useState(false);
   const [showDrop, setShowDrop] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   // 🔵 Top-right blocks state
   const [curriculum, setCurriculum] = useState<string>('CAPS');
   const [grade, setGrade] = useState<number | string>('12');
+
+  // subject (user’s subjects only)
   const [subject, setSubject] = useState<string>('Mathematics');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
-  const [subjects, setSubjects] = useState<string[]>([]); // only user’s subjects
+  const [subjects, setSubjects] = useState<string[]>([]);
 
-  const [chapter, setChapter] = useState<string>('Chapter 1');
+  // chapter = numeric only (UI shows heading "CHAPTER")
+  const [chapter, setChapter] = useState<string>('1');
   const [showChapterDrop, setShowChapterDrop] = useState(false);
 
-  // Minimal helpers
+  // helpers
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
     if (!raw) return 'CAPS';
@@ -51,13 +61,13 @@ export default function SummariesScreen() {
       .replace(/[_-]+/g, ' ')
       .trim()
       .split(/\s+/)
-      .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
 
-  // line break after the 2nd word
+  // optional: break long subjects over two lines
   const formatSubjectTwoLine = (name: string) => {
     const parts = String(name || '').trim().split(/\s+/);
-    if (parts.length <= 2) return name; // 1–2 words: unchanged
+    if (parts.length <= 2) return name;
     const first = parts.slice(0, 2).join(' ');
     const rest = parts.slice(2).join(' ');
     return `${first}\n${rest}`;
@@ -92,7 +102,7 @@ export default function SummariesScreen() {
             setSubject(cleaned[0]);
           }
         } else {
-          setSubjects([]); // only show what user signed up for (none -> none)
+          setSubjects([]); // only show what user signed up for
         }
       } catch {
         // ignore; keep defaults
@@ -101,12 +111,13 @@ export default function SummariesScreen() {
     return () => unsub();
   }, []);
 
-  // Minimal handlers that trigger on long-press 
+  // —— AI actions ——
   const handleSummarize = async () => {
     try {
       const res = await summarizeAI({
-        text: "Photosynthesis allows plants to convert light energy into chemical energy stored in glucose.",
-        subject: "Life Sciences",
+        text:
+          'Photosynthesis allows plants to convert light energy into chemical energy stored in glucose.',
+        subject: 'Life Sciences',
         grade: 10,
       });
       console.log('summarizeAI ->', res.data);
@@ -115,17 +126,22 @@ export default function SummariesScreen() {
     }
   };
 
+  // Build a quick test from the current Subject/Chapter (long-press PRACTISE TESTS)
   const handleBuildQuiz = async () => {
     try {
-      const res = await buildQuizAI({
-        text: "Newton's three laws of motion and their applications in everyday scenarios.",
-        subject: "Physical Sciences",
-        grade: 11,
-        count: 8,
+      const res = await createTestAI({
+        subject,
+        grade,
+        mode: 'section',
+        topic: `Chapter ${chapter}`,
+        count: 10,
+        timed: false,
       });
-      console.log('buildQuizAI ->', res.data);
+      console.log('createTestAI(section) ->', res.data);
+      // Optionally route to TestRunner here if you want:
+      // navigation.navigate('TestRunner', { ... })
     } catch (err) {
-      console.log('buildQuizAI error:', err);
+      console.log('createTestAI(section) error:', err);
     }
   };
 
@@ -133,31 +149,27 @@ export default function SummariesScreen() {
     <View style={s.page}>
       <View style={s.imageWrapper}>
         {/* Left rail artwork (base layers) */}
-        <Image source={require('../../assets/DashboardTab.png')} style={s.tab} resizeMode="contain" />
-        <Image source={require('../../assets/PractiseTab.png')}   style={s.tab} resizeMode="contain" />
-        <Image source={require('../../assets/ResultsTab.png')}    style={s.tab} resizeMode="contain" />
-        <Image source={require('../../assets/ProfileTab.png')}    style={s.tab} resizeMode="contain" />
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Image source={require('../../assets/DashboardTab.png')} style={s.tab} resizeMode="contain" />
+          <Image source={require('../../assets/PractiseTab.png')} style={s.tab} resizeMode="contain" />
+          <Image source={require('../../assets/ResultsTab.png')} style={s.tab} resizeMode="contain" />
+          <Image source={require('../../assets/ProfileTab.png')} style={s.tab} resizeMode="contain" />
+        </View>
 
         {/* When dropdown is open, show the different-looking Summaries rail art */}
         {showDrop && (
-          <Image
-            source={require('../../assets/SummariesDropTab.png')}
-            style={s.dropTab}
-            resizeMode="contain"
-          />
+          <Image source={require('../../assets/SummariesDropTab.png')} style={s.dropTab} resizeMode="contain" />
         )}
 
         {/* Clickable text labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable
-            onPress={() => setShowDrop(v => !v)}
+            onPress={() => setShowDrop((v) => !v)}
             onLongPress={handleSummarize}
             delayLongPress={300}
-            hitSlop={{ top:12, bottom:12, left:12, right:12 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={[s.tabText, showDrop ? s.summariesActive : s.summariesTab]}>
-              SUMMARIES
-            </Text>
+            <Text style={[s.tabText, showDrop ? s.summariesActive : s.summariesTab]}>SUMMARIES</Text>
           </Pressable>
         </View>
 
@@ -166,26 +178,28 @@ export default function SummariesScreen() {
             onPress={() => navigation.navigate('PracticeTests')}
             onLongPress={handleBuildQuiz}
             delayLongPress={300}
-            hitSlop={{ top:12, bottom:12, left:12, right:12 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
           </Pressable>
         </View>
 
         <View style={[s.tabTextWrapper, s.posResults]}>
-          <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.resultsTab]}>RESULTS</Text>
           </Pressable>
         </View>
 
         <View style={[s.tabTextWrapper, s.posProfile]}>
-          <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+          <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={[s.tabText, s.profileTab]}>PROFILE & SETTINGS</Text>
           </Pressable>
         </View>
 
         {/* Corner logo */}
-        <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Image source={require('../../assets/curza-logo.png')} style={s.cornerLogo} resizeMode="contain" />
+        </View>
 
         {/* Main background */}
         <ImageBackground
@@ -194,14 +208,14 @@ export default function SummariesScreen() {
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
-          {/* Optional quick link */}
+          {/* Quick link */}
           <View style={[s.tabTextWrapper, s.posSummaries]}>
-            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top:12, bottom:12, left:12, right:12 }}>
+            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
             </Pressable>
           </View>
 
-          {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
+          {/* 🔵 TOP-RIGHT BLUE BLOCKS (4 pills) */}
           <View style={s.topRightWrap}>
             {/* Row 1: Curriculum + Grade */}
             <View style={s.row}>
@@ -218,28 +232,40 @@ export default function SummariesScreen() {
 
             {/* Row 2: Subject + Chapter */}
             <View style={s.row2}>
-              {/* Subject dropdown */}
-              <View style={[s.pill, s.selectPill3]}>
+              {/* SUBJECT */}
+              <View style={[s.pill, s.subjectPill]}>
                 <Pressable
                   onPress={() => setShowSubjectDrop(true)}
                   hitSlop={6}
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                 >
-                  <Text style={[s.pillMain, s.subjectTextSmall]}>
-                    {formatSubjectTwoLine(subject)}
-                  </Text>
+                  <View style={s.subjectTextWrap}>
+                    <Text style={s.pillTop}>SUBJECT</Text>
+                    <Text
+                      style={s.pillMain}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {subject || '—'}
+                    </Text>
+                  </View>
                   <Text style={s.chev}>▾</Text>
                 </Pressable>
               </View>
 
-              {/* Chapter dropdown */}
-              <View style={[s.pill, s.selectPill2]}>
+              {/* CHAPTER (numeric only) */}
+              <View style={[s.pill, s.chapterPill]}>
                 <Pressable
                   onPress={() => setShowChapterDrop(true)}
                   hitSlop={6}
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                 >
-                  <Text style={[s.pillMain, s.subjectTextSmall]}>{chapter}</Text>
+                  <View style={{ flexShrink: 1, minWidth: 0 }}>
+                    <Text style={s.pillTop}>CHAPTER</Text>
+                    <Text style={s.pillMain} numberOfLines={1} ellipsizeMode="tail">
+                      {chapter}
+                    </Text>
+                  </View>
                   <Text style={s.chev}>▾</Text>
                 </Pressable>
               </View>
@@ -276,7 +302,7 @@ export default function SummariesScreen() {
               </View>
             </Modal>
 
-            {/* Chapter modal */}
+            {/* Chapter modal (numeric only) */}
             <Modal
               transparent
               visible={showChapterDrop}
@@ -287,16 +313,16 @@ export default function SummariesScreen() {
                 <View style={s.ddSheet}>
                   <Text style={s.ddTitle}>Select Chapter</Text>
                   <ScrollView style={{ maxHeight: 340 }}>
-                    {['Chapter 1', 'Chapter 2', 'Chapter 3', 'Chapter 4', 'Chapter 5'].map((ch) => (
+                    {['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'].map((n) => (
                       <Pressable
-                        key={ch}
+                        key={n}
                         style={s.ddRow}
                         onPress={() => {
-                          setChapter(ch);
+                          setChapter(n);
                           setShowChapterDrop(false);
                         }}
                       >
-                        <Text style={s.ddRowText}>{ch}</Text>
+                        <Text style={s.ddRowText}>{n}</Text>
                       </Pressable>
                     ))}
                   </ScrollView>
@@ -312,6 +338,7 @@ export default function SummariesScreen() {
           <View style={s.cardInner}>
             <Image source={require('../../assets/swoosh-yellow.png')} style={s.swoosh} resizeMode="contain" />
             <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
+
             <Text style={s.heading}>SUMMARISE YOUR STUDIES</Text>
             <Text style={s.sub}>Ready to learn today?</Text>
 
@@ -337,16 +364,13 @@ export default function SummariesScreen() {
                       ]}
                     />
                     <ExampleSection
-                      exampleSteps={[
-                        'SIMPLIFY: 2X + 3X - 5',
-                        ' = (2 + 3)X - 5',
-                        ' = 5X - 5',
-                      ]}
+                      exampleSteps={['SIMPLIFY: 2X + 3X - 5', ' = (2 + 3)X - 5', ' = 5X - 5']}
                       onGenerateExamples={() => console.log('Generate Examples')}
                       onDownloadSummary={() => console.log('Download Summary')}
                       onMarkRevised={() => console.log('Mark as Revised')}
                     />
                   </View>
+
                   <View style={s.rightCol}>
                     <FormulasCard
                       formulas={[
@@ -393,19 +417,14 @@ const s = StyleSheet.create({
     position: 'relative',
   },
 
-  tabTextWrapper: {
-    position: 'absolute',
-    left: '4.5%',
-    alignItems: 'center',
-    zIndex: 6, 
-  },
+  tabTextWrapper: { position: 'absolute', left: '4.5%', alignItems: 'center', zIndex: 6 },
 
   // Positions
-  posActive:    { top: '15%' },
+  posActive: { top: '15%' },
   posSummaries: { top: '22%' },
-  posPractice:  { top: '30%' },
-  posResults:   { top: '39%' },
-  posProfile:   { top: '48%' },
+  posPractice: { top: '30%' },
+  posResults: { top: '39%' },
+  posProfile: { top: '48%' },
 
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
@@ -418,50 +437,24 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-  dashboardTab:   { fontWeight: 'bold', marginTop: -115 },
-  summariesTab:   { opacity: 0.9, marginTop: -15 },
-  summariesActive:{ opacity: 1, marginTop: -15, fontWeight: '800', color: '#FACC15' },
-  practiseTab:    { opacity: 0.8, marginTop: 20 },
-  resultsTab:     { opacity: 0.8, marginTop: 45 },
-  profileTab:     { opacity: 0.8, marginTop: 72 },
-  practiseOpenTab:{ opacity: 0.8, marginTop: 20 },
+  dashboardTab: { fontWeight: 'bold', marginTop: -115 },
+  summariesTab: { opacity: 0.9, marginTop: -15 },
+  summariesActive: { opacity: 1, marginTop: -15, fontWeight: '800', color: '#FACC15' },
+  practiseTab: { opacity: 0.8, marginTop: 20 },
+  resultsTab: { opacity: 0.8, marginTop: 45 },
+  profileTab: { opacity: 0.8, marginTop: 72 },
+  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
 
   // Rail art
-  tab: {
-    position: 'absolute',
-    height: '100%',
-    width: '100%',
-    zIndex: 1,
-  },
-  dropTab: {
-    position: 'absolute',
-    height: '100%',
-    width: '100%',
-    top: 0,
-    left: 0,
-    zIndex: 5,
-  },
+  tab: { position: 'absolute', height: '100%', width: '100%', zIndex: 1 },
+  dropTab: { position: 'absolute', height: '100%', width: '100%', top: 0, left: 0, zIndex: 5 },
 
   // Main card
-  card: {
-    flex: 1,
-    borderRadius: 40,
-    overflow: 'hidden',
-    position: 'relative',
-    zIndex: 2,
-  },
+  card: { flex: 1, borderRadius: 40, overflow: 'hidden', position: 'relative', zIndex: 2 },
 
-  // 🔵 top-right container 
-  topRightWrap: {
-    position: 'absolute',
-    top: 22,
-    right: 26,
-    zIndex: 7,
-    width: 360,
-  },
-  subjectTextSmall: {
-    fontSize: 15,
-  },
+  // 🔵 top-right container
+  topRightWrap: { position: 'absolute', top: 22, right: 26, zIndex: 7, width: 360 },
+
   row: {
     flexDirection: 'row',
     gap: 14,
@@ -469,12 +462,8 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
     marginTop: 15,
   },
-  row2: {
-    flexDirection: 'row',
-    gap: 14,
-    justifyContent: 'flex-end',
-    marginTop: 0,
-  },
+  row2: { flexDirection: 'row', gap: 14, justifyContent: 'flex-end', marginTop: 0 },
+
   pill: {
     flexGrow: 1,
     backgroundColor: '#2763F6',
@@ -487,6 +476,7 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
+
   curriculumPill: {
     flexGrow: 0,
     width: 135,
@@ -504,36 +494,31 @@ const s = StyleSheet.create({
     height: 55,
   },
 
-  selectPill: {
+  subjectPill: {
+  flexGrow: 0,
+  width: 155,          
+  height: 55,
+  alignSelf: 'flex-end',
+  justifyContent: 'center',
+  overflow: 'hidden',
+  paddingVertical: 10, 
+},
+
+subjectTextWrap: {
+  flexShrink: 1,       
+  minWidth: 0,      
+  alignSelf: 'stretch'
+},
+
+  chapterPill: {
     flexGrow: 0,
-    width: 170,   
+    width: 90,
     height: 55,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectPill2: {
-    flexGrow: 0,
-    width: 105,   
-    height: 55,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectPill3: {
-    flexGrow: 0,
-    width: 140,   
-    height: 55,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
 
-  subjectPill: {        
-    flexGrow: 0,
-    width: 260,
-    paddingVertical: 10,
-    alignSelf: 'flex-end',
-    justifyContent: 'center',
-    height: 55,
-  },
+  subjectTextSmall: { fontSize: 15 },
 
   pillTop: {
     color: 'rgba(255,255,255,0.85)',
@@ -548,11 +533,7 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
     marginTop: 2,
   },
-  chev: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    marginLeft: 8,
-  },
+  chev: { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
 
   // Dropdowns
   ddBackdrop: {
@@ -562,13 +543,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
-  ddSheet: {
-    width: '100%',
-    maxWidth: 520,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
-  },
+  ddSheet: { width: '100%', maxWidth: 520, backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16 },
   ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
   ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
   ddRowText: { fontSize: 16, color: '#1F2937' },
@@ -588,14 +563,7 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 3,
   },
-  dot: {
-    position: 'absolute',
-    top: 70,
-    left: 450,
-    height: '7%',
-    zIndex: 2,
-    opacity: 0.95,
-  },
+  dot: { position: 'absolute', top: 70, left: 450, height: '7%', zIndex: 2, opacity: 0.95 },
 
   heading: {
     fontFamily: 'Antonio_700Bold',
@@ -621,7 +589,7 @@ const s = StyleSheet.create({
     zIndex: 3,
   },
 
-  // Scrollable block 
+  // Scrollable block
   bigBlock: {
     backgroundColor: 'none',
     borderRadius: 16,
@@ -640,14 +608,7 @@ const s = StyleSheet.create({
   },
   bigBlockScroll: { flex: 1 },
 
-  cornerLogo: {
-    position: 'absolute',
-    bottom: 40,
-    left: -55,
-    height: 130,
-    opacity: 0.9,
-    zIndex: 10,
-  },
+  cornerLogo: { position: 'absolute', bottom: 40, left: -55, height: 130, opacity: 0.9, zIndex: 10 },
 
   topicBar: {
     backgroundColor: '#6B7280',
@@ -663,29 +624,17 @@ const s = StyleSheet.create({
     elevation: 3,
   },
 
-  topicBarText: {
-    color: '#F3F4F6',
-    fontFamily: 'Antonio_700Bold',
-    fontSize: 20,
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-
   topicText: {
     color: '#FFFFFF',
     fontFamily: 'Antonio_700Bold',
     fontSize: 22,
     textAlign: 'center',
+    justifyContent: 'center',
     letterSpacing: 0.4,
-  },
-
-  contentRow: { 
-    flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
-    marginTop: 0,
   },
 
+  contentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 0 },
   leftCol: { maxWidth: 460, flexShrink: 0 },
   rightCol: { maxWidth: 460, flexShrink: 0 },
 });
