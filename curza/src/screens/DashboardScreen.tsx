@@ -12,9 +12,9 @@ import UpcomingTestsCard from '../components/UpcomingTestsCard';
 import FeedbackCard from '../components/FeedbackCard';
 import RecentActivitiesCard from '../components/RecentActivitiesCard';
 
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 
 import { useNotice } from '../contexts/NoticeProvider';
 
@@ -78,10 +78,14 @@ export default function DashboardScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTodoText, setNewTodoText] = useState('');
 
-  // Auth + Profile & Subjects
+  // Auth + Profile & Subjects + To-Dos (auth-guarded listener)
   useEffect(() => {
-    const auth = getAuth();
+    let unsubTodos: undefined | (() => void);
+
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      // clean previous todos subscription on auth change
+      if (unsubTodos) { unsubTodos(); unsubTodos = undefined; }
+
       if (!user) {
         setFirstName('');
         setTodos([]);
@@ -132,10 +136,10 @@ export default function DashboardScreen() {
           setSubject(DEFAULT_SUBJECTS.includes(chosen) ? chosen : DEFAULT_SUBJECTS[0]);
         }
 
-        // After profile is ready, start To-Do listener
+        // To-Dos: subscribe only while user is signed in
         const todosCol = collection(db, 'users', user.uid, 'todos');
         const qy = query(todosCol, orderBy('createdAt', 'asc'));
-        const unsubTodos = onSnapshot(
+        unsubTodos = onSnapshot(
           qy,
           (snap) => {
             const list: TodoItem[] = [];
@@ -147,20 +151,22 @@ export default function DashboardScreen() {
           },
           (err) => {
             console.log('Todos snapshot error:', err);
+            // Optional: toast, but will not trigger when logged out because we unsubscribe above
             show('Could not load your To-Do list. Permissions or network issue.', 'error', 3000);
           },
         );
-
-        return () => unsubTodos();
       } catch (e) {
         const fallback =
-          (getAuth().currentUser?.displayName?.split(' ')?.[0] ?? '') ||
-          (getAuth().currentUser?.email?.split('@')?.[0] ?? '');
+          (auth.currentUser?.displayName?.split(' ')?.[0] ?? '') ||
+          (auth.currentUser?.email?.split('@')?.[0] ?? '');
         setFirstName(fallback);
       }
     });
 
-    return () => unsubAuth();
+    return () => {
+      if (unsubTodos) unsubTodos();
+      unsubAuth();
+    };
   }, [show]);
 
   // To-Do actions
@@ -169,7 +175,7 @@ export default function DashboardScreen() {
   };
 
   const saveTodo = async () => {
-    const user = getAuth().currentUser;
+    const user = auth.currentUser;
     if (!user) return;
 
     const text = newTodoText.trim();
@@ -195,7 +201,7 @@ export default function DashboardScreen() {
   };
 
   const completeTodo = async (todoId: string) => {
-    const user = getAuth().currentUser;
+    const user = auth.currentUser;
     if (!user) return;
     try {
       await deleteDoc(doc(db, 'users', user.uid, 'todos', todoId));
@@ -206,7 +212,7 @@ export default function DashboardScreen() {
   };
 
   const deleteTodo = async (todoId: string) => {
-    const user = getAuth().currentUser;
+    const user = auth.currentUser;
     if (!user) return;
     try {
       await deleteDoc(doc(db, 'users', user.uid, 'todos', todoId));
@@ -217,7 +223,6 @@ export default function DashboardScreen() {
   };
 
   const completeSuggested = (id: string) => {
-    // Hook for progress updates if needed
     setSuggestedTodos((prev) => prev.filter((t) => t.id !== id));
     show('Nice! Progress updated.', 'success', 2200);
   };
@@ -347,7 +352,7 @@ export default function DashboardScreen() {
           <View style={s.cardInner}>
             <Image
               source={require('../../assets/swoosh-yellow.png')}
-              style={[s.swoosh, { left: swooshLeft }]}
+              style={[s.swoosh, { left: headingW > 0 ? headingX + headingW / 2 - SWOOSH_W / 2 - 30 : '20%' }]}
               resizeMode="contain"
             />
             <Image source={require('../../assets/dot-blue.png')} style={s.dot} resizeMode="contain" />
@@ -360,7 +365,7 @@ export default function DashboardScreen() {
                 setHeadingW(width);
               }}
             >
-              {headingText}
+              {firstName ? `WELCOME BACK, ${firstName.toUpperCase()}` : 'WELCOME BACK'}
             </Text>
 
             <Text style={s.sub}>Ready to learn today?</Text>

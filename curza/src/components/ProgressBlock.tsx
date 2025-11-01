@@ -26,7 +26,6 @@ export default function ProgressBlock({
     return [
       { key: 'Summaries Studied', value: s.summariesStudied, color: '#F59E0B' },
       { key: 'Chapters Covered', value: s.chaptersCovered, color: '#3B82F6' },
-      { key: 'Quizzes Done', value: s.quizzesDone, color: '#FACC15' },
       { key: 'Tests Completed', value: s.testsCompleted, color: '#0F172A' },
     ].map((seg) => ({ ...seg, pct: seg.value / total }));
   }, [stats]);
@@ -90,7 +89,6 @@ export default function ProgressBlock({
         <View style={s.legendCol}>
           <LegendRow color="#F59E0B" label="Summaries Studied" value={stats.summariesStudied} />
           <LegendRow color="#3B82F6" label="Chapters Covered" value={stats.chaptersCovered} />
-          <LegendRow color="#FACC15" label="Quizzes Done" value={stats.quizzesDone} />
           <LegendRow color="#0F172A" label="Tests Completed" value={stats.testsCompleted} />
         </View>
       </View>
@@ -155,7 +153,7 @@ const s = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingLeft: 4,
-    gap: 6,
+    gap: 12,
   },
   legendRow: {
     flexDirection: 'row',
