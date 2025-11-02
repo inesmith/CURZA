@@ -37,6 +37,6 @@ export const auth = _auth;
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app, 'us-central1');
-
+export const scoreTestAI = httpsCallable(functions, 'scoreTest');
 export const summarizeAI  = httpsCallable(functions, 'summarize');
 export const createTestAI = httpsCallable(functions, 'createTest');

@@ -1,19 +1,17 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 
 export type ActivityItem = {
   id: string;
   text: string;
-  score?: number | string;
-  showArrow?: boolean;
+  score?: number | string;   // e.g. 65 or '65%'
+  showArrow?: boolean;       // true for tests
+  onPress?: () => void;      // navigate to result details (only for tests)
 };
 
 export default function RecentActivitiesCard({
   title = 'RECENT ACTIVITIES',
-  items = [
-    { id: '1', text: 'COMPLETED ALGEBRA TEST', score: '65%', showArrow: true },
-    { id: '2', text: 'READ GEOMETRY SUMMARY - CHAPTER 4' },
-  ],
+  items = [],
 }: {
   title?: string;
   items?: ActivityItem[];
@@ -22,31 +20,37 @@ export default function RecentActivitiesCard({
     <View style={s.card}>
       <Text style={s.title}>{title}</Text>
 
-      {items.map((it) => (
-        <View key={it.id} style={s.rowWrap}>
-          <View style={s.row}>
-            <Text style={s.rowText} numberOfLines={2}>
-              {it.text}
-            </Text>
-
-            {it.score != null && (
-              <Text style={s.score}>
-                {typeof it.score === 'number' ? `${it.score}%` : String(it.score)}
+      {items.map((it) => {
+        const RowComp = it.onPress ? Pressable : View;
+        return (
+          <View key={it.id} style={s.rowWrap}>
+            <RowComp
+              {...(it.onPress ? { onPress: it.onPress, android_ripple: { color: 'rgba(255,255,255,0.06)' } } : {})}
+              style={s.row}
+            >
+              <Text style={s.rowText} numberOfLines={2}>
+                {it.text}
               </Text>
-            )}
-          </View>
 
-          {it.showArrow && <View style={s.arrow} />}
-        </View>
-      ))}
+              {it.score != null && (
+                <Text style={s.score}>
+                  {typeof it.score === 'number' ? `${it.score}%` : String(it.score)}
+                </Text>
+              )}
+            </RowComp>
+
+            {it.showArrow && <View style={s.arrow} />}
+          </View>
+        );
+      })}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   card: {
-    backgroundColor: '#6B7280',       
-    borderRadius: 22,
+    backgroundColor: '#6B7280',
+    borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 14,
     shadowColor: '#000',
@@ -54,7 +58,7 @@ const s = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
-    maxWidth: 440,                     
+    maxWidth: 440,
     alignSelf: 'stretch',
   },
 
@@ -75,7 +79,7 @@ const s = StyleSheet.create({
   row: {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#EAB308',           
+    borderColor: '#EAB308',
     backgroundColor: 'none',
     paddingVertical: 10,
     paddingHorizontal: 18,

@@ -1,5 +1,5 @@
 // src/screens/DashboardScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ImageBackground, Modal, ScrollView, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -14,10 +14,34 @@ import FeedbackCard from '../components/FeedbackCard';
 import RecentActivitiesCard from '../components/RecentActivitiesCard';
 
 import { onAuthStateChanged } from 'firebase/auth';
-import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  where,
+} from 'firebase/firestore';
 import { db, auth } from '../../firebase';
 
 import { useNotice } from '../contexts/NoticeProvider';
+import { ensureProgressDoc } from '../utils/progress';
+
+// (AI suggestions)
+import {
+  refreshSuggestedTodos,
+  subscribeSuggestedTodos,
+  applySuggestedTodo,
+  removeSuggestedTodo,
+} from '../utils/suggestions';
+
+// topic totals helper
+import { getTopicTotal } from '../utils/topicTotals';
 
 const SWOOSH_W = 380;
 
@@ -52,7 +76,22 @@ const titleCase = (s: any): string =>
     .split(/\s+/)
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
     .join(' ');
+
+const cleanSubject = (s: string) =>
+  String(s ?? '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ');
 // ------- end helpers -------
+
+type ActivityItem = {
+  id: string;
+  text: string;
+  score?: number | string;
+  showArrow?: boolean;
+};
 
 export default function DashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -72,24 +111,46 @@ export default function DashboardScreen() {
 
   // To-Dos
   const [todos, setTodos] = useState<TodoItem[]>([]);
-  const [suggestedTodos, setSuggestedTodos] = useState<TodoItem[]>([
-    { id: 's1', text: 'REVIEW FACTORISATION STEPS (Q2.2)', isSuggested: true },
-    { id: 's2', text: 'RETRY INEQUALITIES MINI-TEST', isSuggested: true },
-  ]);
+  const [suggestedTodos, setSuggestedTodos] = useState<TodoItem[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTodoText, setNewTodoText] = useState('');
+
+  // progress state (live)
+  const [stats, setStats] = useState({
+    summariesStudied: 0,
+    chaptersCovered: 0,
+    testsCompleted: 0,
+  });
+
+  // total topics (for the blue summary bar)
+  const [totalTopics, setTotalTopics] = useState<number>(12);
+
+  // dynamic content per subject/grade/curriculum
+  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
+  const [upcomingTests, setUpcomingTests] = useState<string[]>([]);
+  const [weakAreas, setWeakAreas] = useState<string[]>([]);
 
   // Auth + Profile & Subjects + To-Dos (auth-guarded listener)
   useEffect(() => {
     let unsubTodos: undefined | (() => void);
+    let unsubProgress: undefined | (() => void);
+    let unsubSuggested: undefined | (() => void);
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
-      // clean previous todos subscription on auth change
+      // clean previous subscriptions on auth change
       if (unsubTodos) { unsubTodos(); unsubTodos = undefined; }
+      if (unsubProgress) { unsubProgress(); unsubProgress = undefined; }
+      if (unsubSuggested) { unsubSuggested(); unsubSuggested = undefined; }
 
       if (!user) {
         setFirstName('');
         setTodos([]);
+        setSuggestedTodos([]);
+        setStats({ summariesStudied: 0, chaptersCovered: 0, testsCompleted: 0 });
+        setTotalTopics(12);
+        setRecentActivities([]);
+        setUpcomingTests([]);
+        setWeakAreas([]);
         return;
       }
 
@@ -113,8 +174,14 @@ export default function DashboardScreen() {
           '';
         setFirstName(name);
 
-        if (profile?.curriculum) setCurriculum(normalizeCurriculum(profile.curriculum));
-        if (profile?.grade) setGrade(profile.grade);
+        let curr = 'CAPS';
+        let grd: number | string = '12';
+
+        if (profile?.curriculum) curr = normalizeCurriculum(profile.curriculum);
+        if (profile?.grade) grd = profile.grade;
+
+        setCurriculum(curr);
+        setGrade(grd);
 
         const signedUpSubjects: any[] =
           profile?.subjects ||
@@ -122,19 +189,29 @@ export default function DashboardScreen() {
           profile?.subjectsChosen ||
           [];
 
+        let chosenSubject = 'Mathematics';
         if (Array.isArray(signedUpSubjects) && signedUpSubjects.length > 0) {
           const cleaned = signedUpSubjects.map(titleCase).filter(Boolean);
           setSubjects(cleaned);
           if (profile?.subject) {
             const chosen = titleCase(profile.subject);
-            setSubject(cleaned.includes(chosen) ? chosen : cleaned[0]);
+            chosenSubject = cleaned.includes(chosen) ? chosen : cleaned[0];
           } else {
-            setSubject(cleaned[0]);
+            chosenSubject = cleaned[0];
           }
         } else {
           setSubjects(DEFAULT_SUBJECTS);
           const chosen = profile?.subject ? titleCase(profile.subject) : DEFAULT_SUBJECTS[0];
-          setSubject(DEFAULT_SUBJECTS.includes(chosen) ? chosen : DEFAULT_SUBJECTS[0]);
+          chosenSubject = DEFAULT_SUBJECTS.includes(chosen) ? chosen : DEFAULT_SUBJECTS[0];
+        }
+        setSubject(chosenSubject);
+
+        // Fetch total topic count for the current curriculum+grade+subject
+        try {
+          const total = await getTopicTotal(curr, grd, chosenSubject);
+          setTotalTopics(total > 0 ? total : 12);
+        } catch {
+          setTotalTopics(12);
         }
 
         // To-Dos: subscribe only while user is signed in
@@ -152,10 +229,167 @@ export default function DashboardScreen() {
           },
           (err) => {
             console.log('Todos snapshot error:', err);
-            // Optional: toast, but will not trigger when logged out because we unsubscribe above
             show('Could not load your To-Do list. Permissions or network issue.', 'error', 3000);
           },
         );
+
+        // progress: ensure + listen
+        await ensureProgressDoc(user.uid);
+        const pRef = doc(db, 'users', user.uid, 'progress', 'default');
+        unsubProgress = onSnapshot(
+          pRef,
+          (pSnap) => {
+            const d = pSnap.data() as any;
+            setStats({
+              summariesStudied: d?.summariesStudied ?? 0,
+              chaptersCovered: d?.chaptersCovered ?? 0,
+              testsCompleted: d?.testsCompleted ?? 0,
+            });
+          },
+          (err) => {
+            console.log('Progress snapshot error:', err);
+          },
+        );
+
+        // AI Suggested To-Dos
+        await refreshSuggestedTodos(user.uid, { curriculum: curr, grade: grd, subject: chosenSubject });
+        unsubSuggested = subscribeSuggestedTodos(user.uid, (items) => {
+          setSuggestedTodos(items);
+        });
+
+        // ===== Subject/grade/curriculum-aware dynamic bits =====
+
+        // Recent activities (5 most recent: tests/summaries/chapters)
+        (async () => {
+          try {
+            const acts: ActivityItem[] = [];
+
+            // Results (tests)
+            const resultsCol = collection(db, 'users', user.uid, 'results');
+            const resQ = query(resultsCol, orderBy('createdAt', 'desc'));
+            const resSnap = await getDocs(resQ);
+            resSnap.forEach((d) => {
+              const r = d.data() as any;
+              const subj = cleanSubject(r?.subject ?? '');
+              if (subj && subj !== cleanSubject(chosenSubject)) return;
+              const title = String(r?.paper ?? 'TEST').toUpperCase();
+              const scr = typeof r?.score === 'number' ? r.score : undefined;
+              acts.push({
+                id: `res-${d.id}`,
+                text: `COMPLETED ${title}`,
+                score: typeof scr === 'number' ? scr : undefined,
+                showArrow: true,
+              });
+            });
+
+            // Summaries
+            const sumsCol = collection(db, 'users', user.uid, 'summaries');
+            const sumsQ = query(sumsCol, orderBy('generatedAt', 'desc'));
+            const sumsSnap = await getDocs(sumsQ);
+            sumsSnap.forEach((d) => {
+              const s = d.data() as any;
+              const subj = cleanSubject(s?.subject ?? '');
+              if (subj && subj !== cleanSubject(chosenSubject)) return;
+              const ch = String(s?.chapter ?? '').trim() || '1';
+              acts.push({
+                id: `sum-${d.id}`,
+                text: `READ ${cleanSubject(subj || chosenSubject)} SUMMARY - CHAPTER ${ch}`,
+              });
+            });
+
+            // Chapters covered (optional collection: users/{uid}/chaptersProgress)
+            try {
+              const chCol = collection(db, 'users', user.uid, 'chaptersProgress');
+              const chQ = query(chCol, orderBy('updatedAt', 'desc'));
+              const chSnap = await getDocs(chQ);
+              chSnap.forEach((d) => {
+                const c = d.data() as any;
+                const subj = cleanSubject(c?.subject ?? '');
+                if (subj && subj !== cleanSubject(chosenSubject)) return;
+                const ch = String(c?.chapter ?? '').trim() || '1';
+                acts.push({
+                  id: `chap-${d.id}`,
+                  text: `COVERED CHAPTER ${ch} – ${cleanSubject(subj || chosenSubject)}`,
+                });
+              });
+            } catch {
+              // optional, ignore
+            }
+
+            acts.sort((a, b) => (a.id > b.id ? -1 : 1));
+            setRecentActivities(acts.slice(0, 5));
+          } catch {
+            setRecentActivities([]);
+          }
+        })();
+
+        // Weak areas (derive from latest results breakdown)
+        (async () => {
+          try {
+            const resultsCol = collection(db, 'users', user.uid, 'results');
+            const resQ = query(resultsCol, orderBy('createdAt', 'desc'));
+            const resSnap = await getDocs(resQ);
+
+            const lows: { topic: string; score: number; subject: string }[] = [];
+            resSnap.forEach((d) => {
+              const r = d.data() as any;
+              const subj = cleanSubject(r?.subject ?? '');
+              if (subj && subj !== cleanSubject(chosenSubject)) return;
+
+              if (Array.isArray(r?.breakdown)) {
+                r.breakdown.forEach((b: any) => {
+                  const topic = String(b?.topic ?? '').trim();
+                  const score = typeof b?.score === 'number' ? b.score : 100;
+                  if (topic && score <= 65) lows.push({ topic, score, subject: subj || chosenSubject });
+                });
+              } else if (typeof r?.score === 'number' && r.score <= 60) {
+                lows.push({ topic: 'Overall', score: r.score, subject: subj || chosenSubject });
+              }
+            });
+
+            lows.sort((a, b) => a.score - b.score);
+            const top2 = lows.map((x) => x.topic.toUpperCase()).filter(Boolean);
+            setWeakAreas(top2.slice(0, 2));
+          } catch {
+            setWeakAreas([]);
+          }
+        })();
+
+        // Upcoming tests (AI-ish suggestion from weak areas / recent chapters)
+        (async () => {
+          try {
+            const suggs: string[] = [];
+
+            // From weak areas
+            weakAreas.forEach((w) => {
+              suggs.push(`PRACTICE MINI-TEST: ${w}`);
+            });
+
+            // If still empty, suggest from recent summaries chapters
+            if (suggs.length === 0) {
+              const sumsCol = collection(db, 'users', user.uid, 'summaries');
+              const sumsQ = query(sumsCol, orderBy('generatedAt', 'desc'));
+              const sumsSnap = await getDocs(sumsQ);
+              const seen = new Set<string>();
+              sumsSnap.forEach((d) => {
+                const s = d.data() as any;
+                const subj = cleanSubject(s?.subject ?? '');
+                if (subj && subj !== cleanSubject(chosenSubject)) return;
+                const ch = String(s?.chapter ?? '').trim();
+                if (!ch) return;
+                const label = `REVISION TEST: CHAPTER ${ch}`;
+                if (!seen.has(label)) {
+                  seen.add(label);
+                  suggs.push(label);
+                }
+              });
+            }
+
+            setUpcomingTests(suggs.slice(0, 3));
+          } catch {
+            setUpcomingTests([]);
+          }
+        })();
       } catch (e) {
         const fallback =
           (auth.currentUser?.displayName?.split(' ')?.[0] ?? '') ||
@@ -166,9 +400,86 @@ export default function DashboardScreen() {
 
     return () => {
       if (unsubTodos) unsubTodos();
+      if (unsubProgress) unsubProgress();
+      if (unsubSuggested) unsubSuggested();
       unsubAuth();
     };
   }, [show]);
+
+  // Rebuild subject-specific data when subject changes manually from dropdown
+  useEffect(() => {
+    (async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // refresh topic total for subject switch
+      try {
+        const total = await getTopicTotal(curriculum, grade, subject);
+        setTotalTopics(total > 0 ? total : 12);
+      } catch {
+        setTotalTopics(12);
+      }
+
+      // Refresh weak areas + upcoming tests for this subject
+      try {
+        // Weak areas again
+        const resultsCol = collection(db, 'users', user.uid, 'results');
+        const resQ = query(resultsCol, orderBy('createdAt', 'desc'));
+        const resSnap = await getDocs(resQ);
+
+        const lows: { topic: string; score: number; subject: string }[] = [];
+        resSnap.forEach((d) => {
+          const r = d.data() as any;
+          const subj = cleanSubject(r?.subject ?? '');
+          if (subj && subj !== cleanSubject(subject)) return;
+
+          if (Array.isArray(r?.breakdown)) {
+            r.breakdown.forEach((b: any) => {
+              const topic = String(b?.topic ?? '').trim();
+              const score = typeof b?.score === 'number' ? b.score : 100;
+              if (topic && score <= 65) lows.push({ topic, score, subject: subj || subject });
+            });
+          } else if (typeof r?.score === 'number' && r.score <= 60) {
+            lows.push({ topic: 'Overall', score: r.score, subject: subj || subject });
+          }
+        });
+
+        lows.sort((a, b) => a.score - b.score);
+        const top2 = lows.map((x) => x.topic.toUpperCase()).filter(Boolean);
+        setWeakAreas(top2.slice(0, 2));
+      } catch {
+        setWeakAreas([]);
+      }
+
+      try {
+        // Upcoming tests from weak areas or summaries
+        const suggs: string[] = [];
+        weakAreas.forEach((w) => suggs.push(`PRACTICE MINI-TEST: ${w}`));
+        if (suggs.length === 0) {
+          const sumsCol = collection(db, 'users', user.uid, 'summaries');
+          const sumsQ = query(sumsCol, orderBy('generatedAt', 'desc'));
+          const sumsSnap = await getDocs(sumsQ);
+          const seen = new Set<string>();
+          sumsSnap.forEach((d) => {
+            const s = d.data() as any;
+            const subj = cleanSubject(s?.subject ?? '');
+            if (subj && subj !== cleanSubject(subject)) return;
+            const ch = String(s?.chapter ?? '').trim();
+            if (!ch) return;
+            const label = `REVISION TEST: CHAPTER ${ch}`;
+            if (!seen.has(label)) {
+              seen.add(label);
+              suggs.push(label);
+            }
+          });
+        }
+        setUpcomingTests(suggs.slice(0, 3));
+      } catch {
+        setUpcomingTests([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject]);
 
   // To-Do actions
   const handleAddTodo = async () => {
@@ -223,14 +534,27 @@ export default function DashboardScreen() {
     }
   };
 
-  const completeSuggested = (id: string) => {
-    setSuggestedTodos((prev) => prev.filter((t) => t.id !== id));
-    show('Nice! Progress updated.', 'success', 2200);
+  // Suggested actions (these also update progress)
+  const completeSuggested = async (id: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      await applySuggestedTodo(user.uid, id); // moves to todos + increments progress
+      show('Added to your To-Do list. Progress updated!', 'success', 2200);
+    } catch {
+      show('Could not apply suggestion right now.', 'error', 2600);
+    }
   };
 
-  const deleteSuggested = (id: string) => {
-    setSuggestedTodos((prev) => prev.filter((t) => t.id !== id));
-    show('Suggestion removed.', 'success', 1600);
+  const deleteSuggested = async (id: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      await removeSuggestedTodo(user.uid, id);
+      show('Suggestion removed.', 'success', 1600);
+    } catch {
+      show('Could not remove the suggestion.', 'error', 2600);
+    }
   };
 
   const headingText = firstName
@@ -239,6 +563,26 @@ export default function DashboardScreen() {
 
   const swooshLeft =
     headingW > 0 ? headingX + headingW / 2 - SWOOSH_W / 2 - 30 : '20%';
+
+  // 🔵 Build the dynamic bar text
+  const completed = Math.max(0, Math.min(stats.chaptersCovered || 0, totalTopics || 0));
+  const total = Math.max(0, totalTopics || 0);
+  const barText = `YOU HAVE COMPLETED ${completed}/${total} ${subject.toUpperCase()} TOPICS`;
+
+  // Actions for cards (no visual changes)
+  const startSelectedUpcoming = () => {
+    // The card ensures something is selected (button disabled otherwise).
+    // Navigate to your practice flow.
+    navigation.navigate('PracticeTests');
+  };
+  const practiceSelectedWeakArea = () => {
+    navigation.navigate('PracticeTests');
+  };
+
+  // Build RecentActivities array for the card (already constrained to 5 in state)
+  const recentItems = useMemo(() => {
+    return recentActivities.map((it) => ({ ...it }));
+  }, [recentActivities]);
 
   return (
     <View style={s.page}>
@@ -340,6 +684,10 @@ export default function DashboardScreen() {
                           onPress={() => {
                             setSubject(subj);
                             setShowSubjectDrop(false);
+                            // fetch new total when subject changes
+                            getTopicTotal(curriculum, grade, subj)
+                              .then((t) => setTotalTopics(t > 0 ? t : 12))
+                              .catch(() => setTotalTopics(12));
                           }}
                         >
                           <Text style={s.ddRowText}>{subj}</Text>
@@ -389,22 +737,23 @@ export default function DashboardScreen() {
                   <View style={s.leftCol}>
                     <ProgressBlock
                       {...({
-                        stats: {
-                          summariesStudied: 15,
-                          chaptersCovered: 25,
-                          quizzesDone: 20,
-                          testsCompleted: 40,
-                        },
+                        stats, // live from Firestore
                       } as any)}
                     />
 
                     <View style={{ marginTop: 0 }}>
-                      <ProgressSummaryBar text="YOU HAVE COMPLETED 4/12 MATH TOPICS" />
+                      <ProgressSummaryBar text={barText} width={420} />
                     </View>
 
                     <View style={s.smallCardsRow}>
-                      <UpcomingTestsCard onStart={() => {}} />
-                      <FeedbackCard areas={['FRACTIONS', 'ALGEBRA']} onView={() => {}} />
+                      <UpcomingTestsCard
+                        suggestions={upcomingTests}
+                        onStart={startSelectedUpcoming}
+                      />
+                      <FeedbackCard
+                        areas={weakAreas}
+                        onView={practiceSelectedWeakArea}
+                      />
                     </View>
                   </View>
 
@@ -428,12 +777,7 @@ export default function DashboardScreen() {
                     />
 
                     <View style={s.recentSpacer}>
-                      <RecentActivitiesCard
-                        items={[
-                          { id: 'a1', text: 'COMPLETED ALGEBRA TEST', score: 65, showArrow: true },
-                          { id: 'a2', text: 'READ GEOMETRY SUMMARY - CHAPTER 4' },
-                        ]}
-                      />
+                      <RecentActivitiesCard items={recentItems} />
                     </View>
                   </View>
                 </View>

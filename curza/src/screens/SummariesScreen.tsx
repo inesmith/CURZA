@@ -28,6 +28,9 @@ import FormulasCard from '../components/FormulasCard';
 import ExampleSection from '../components/ExampleSection';
 import TipBoxCard from '../components/TipBoxCard';
 
+// progress helpers
+import { incSummariesStudied, incChaptersCovered } from '../utils/progress';
+
 export default function SummariesScreen() {
   const [showDrop, setShowDrop] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -64,7 +67,6 @@ export default function SummariesScreen() {
       .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
 
-  // optional: break long subjects over two lines
   const formatSubjectTwoLine = (name: string) => {
     const parts = String(name || '').trim().split(/\s+/);
     if (parts.length <= 2) return name;
@@ -121,6 +123,7 @@ export default function SummariesScreen() {
         grade: 10,
       });
       console.log('summarizeAI ->', res.data);
+      await incSummariesStudied(); // progress update
     } catch (err) {
       console.log('summarizeAI error:', err);
     }
@@ -208,7 +211,8 @@ export default function SummariesScreen() {
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
-          {/* Quick link */}
+          {/* Quick link */
+          }
           <View style={[s.tabTextWrapper, s.posSummaries]}>
             <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
@@ -367,7 +371,7 @@ export default function SummariesScreen() {
                       exampleSteps={['SIMPLIFY: 2X + 3X - 5', ' = (2 + 3)X - 5', ' = 5X - 5']}
                       onGenerateExamples={() => console.log('Generate Examples')}
                       onDownloadSummary={() => console.log('Download Summary')}
-                      onMarkRevised={() => console.log('Mark as Revised')}
+                      onMarkRevised={async () => { try { await incChaptersCovered(); } catch (e) { console.log(e);} }} // progress update
                     />
                   </View>
 
@@ -496,17 +500,17 @@ const s = StyleSheet.create({
 
   subjectPill: {
   flexGrow: 0,
-  width: 155,          
+  width: 155,
   height: 55,
   alignSelf: 'flex-end',
   justifyContent: 'center',
   overflow: 'hidden',
-  paddingVertical: 10, 
+  paddingVertical: 10,
 },
 
 subjectTextWrap: {
-  flexShrink: 1,       
-  minWidth: 0,      
+  flexShrink: 1,
+  minWidth: 0,
   alignSelf: 'stretch'
 },
 

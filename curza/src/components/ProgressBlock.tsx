@@ -1,3 +1,4 @@
+// src/components/ProgressBlock.tsx
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
@@ -5,7 +6,7 @@ import Svg, { Circle } from 'react-native-svg';
 type Stats = {
   summariesStudied: number;
   chaptersCovered: number;
-  quizzesDone: number;
+  quizzesDone?: number; // not used in chart, kept optional for compatibility
   testsCompleted: number;
 };
 
@@ -17,20 +18,18 @@ export default function ProgressBlock({
   title?: string;
 }) {
   const segments = useMemo(() => {
-    const s = stats || { summariesStudied: 0, chaptersCovered: 0, quizzesDone: 0, testsCompleted: 0 };
-    const total = Math.max(
-      1,
-      s.summariesStudied + s.chaptersCovered + s.quizzesDone + s.testsCompleted
-    );
+    const s = stats || { summariesStudied: 0, chaptersCovered: 0, testsCompleted: 0 };
+    const rawTotal = s.summariesStudied + s.chaptersCovered + s.testsCompleted;
+    const total = Math.max(1, rawTotal);
 
     return [
       { key: 'Summaries Studied', value: s.summariesStudied, color: '#F59E0B' },
-      { key: 'Chapters Covered', value: s.chaptersCovered, color: '#3B82F6' },
-      { key: 'Tests Completed', value: s.testsCompleted, color: '#0F172A' },
+      { key: 'Chapters Covered',  value: s.chaptersCovered,  color: '#3B82F6' },
+      { key: 'Tests Completed',   value: s.testsCompleted,   color: '#0F172A' },
     ].map((seg) => ({ ...seg, pct: seg.value / total }));
   }, [stats]);
 
-  const size = 160; // ⬅️ smaller donut
+  const size = 160;
   const center = size / 2;
   const r = 50;
   const stroke = 20;
@@ -58,6 +57,16 @@ export default function ProgressBlock({
     return circle;
   });
 
+  // show 0% when nothing has been logged
+  const totalDone =
+    (stats?.summariesStudied ?? 0) +
+    (stats?.chaptersCovered ?? 0) +
+    (stats?.testsCompleted ?? 0);
+
+  const overallPct = totalDone === 0
+    ? 0
+    : Math.round(segments.reduce((acc, seg) => acc + seg.pct, 0) * 25); 
+
   return (
     <View style={s.wrap}>
       <Text style={s.title}>{title}</Text>
@@ -78,18 +87,14 @@ export default function ProgressBlock({
 
           <View style={s.centerLabel}>
             <Text style={s.centerTop}>Overall</Text>
-            <Text style={s.centerMain}>
-              {Math.round(
-                segments.reduce((acc, seg) => acc + seg.pct, 0) * 25
-              )}%
-            </Text>
+            <Text style={s.centerMain}>{overallPct}%</Text>
           </View>
         </View>
 
         <View style={s.legendCol}>
           <LegendRow color="#F59E0B" label="Summaries Studied" value={stats.summariesStudied} />
-          <LegendRow color="#3B82F6" label="Chapters Covered" value={stats.chaptersCovered} />
-          <LegendRow color="#0F172A" label="Tests Completed" value={stats.testsCompleted} />
+          <LegendRow color="#3B82F6" label="Chapters Covered"  value={stats.chaptersCovered} />
+          <LegendRow color="#0F172A" label="Tests Completed"   value={stats.testsCompleted} />
         </View>
       </View>
     </View>
@@ -112,11 +117,11 @@ const s = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
     marginBottom: 12,
-    width: 420, // ⬅️ narrower overall block width
+    width: 420,
     alignSelf: 'flex-start',
   },
   title: {
-    textAlign: 'center', 
+    textAlign: 'center',
     color: '#F9FAFB',
     fontFamily: 'Antonio_700Bold',
     fontSize: 18,
@@ -131,7 +136,7 @@ const s = StyleSheet.create({
     width: 160,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6, // ⬅️ small offset from left
+    marginLeft: 6,
   },
   centerLabel: {
     position: 'absolute',

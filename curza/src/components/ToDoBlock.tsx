@@ -1,9 +1,11 @@
+// src/components/ToDoBlock.tsx
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 
 export type TodoItem = {
   id: string;
   text: string;
+  subject?: string;    
   isSuggested?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;   // complete for user-created (removes)
@@ -110,7 +112,7 @@ const s = StyleSheet.create({
   // Card
   wrap: {
     backgroundColor: '#6B7280',
-    borderRadius: 22,
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 18,

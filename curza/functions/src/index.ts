@@ -1,125 +1,112 @@
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { initializeApp } from "firebase-admin/app";
-import { defineSecret } from "firebase-functions/params";
+import * as functions from "firebase-functions/v2/https";
+import { openai, MODEL } from "./openai";
+import { Quiz, Answers, Scored } from "./schemas";
 
-initializeApp();
-
-// Use Secret Manager (what you just deployed)
-const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
-
-const MODEL = "gpt-4o-mini"; // small/fast; swap to bigger when needed
-
-type CreateTestReq = {
-  subject: string;        // "Physical Sciences"
-  grade: number;          // 7..12
-  mode: "full" | "section";
-  examType?: string;      // e.g. "Paper 1" | "Paper 2" | "June Exam" | "Trial Exam"
-  topic?: string;         // only for section mode (e.g., "Mechanics: Newton's Laws")
-  minutes?: number;       // optional explicit time limit; if absent we suggest one
-};
-
-// quick helper for OpenAI Responses API
-async function callResponses(key: string, body: any) {
-  const res = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
+// Helper to call Structured Outputs
+async function structuredJSON<T>(schema: object, prompt: string): Promise<T> {
+  const res = await openai.responses.create({
+    model: MODEL,
+    input: prompt,
+    // @ts-ignore: response_format is not yet in the SDK typings
+    response_format: { type: "json_schema", json_schema: { name: "schema", schema } }
   });
-  if (!res.ok) {
-    throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
-  }
-  return res.json() as Promise<any>;
+  const txt = res.output_text || (res.output as any)?.[0]?.content?.[0]?.text || "";
+  return JSON.parse(txt) as T;
 }
 
-/**
- * createTest
- * Returns an exam-like test structure (not a “quiz”):
- * - title, durationMinutes (suggested if not provided)
- * - sections[] with items[] (MCQ/short/calc), each with points + marking guidance
- */
-export const createTest = onCall({ secrets: [OPENAI_API_KEY] }, async (request) => {
-  const { auth, data } = request;
-  if (!auth) throw new HttpsError("unauthenticated", "Sign in required");
-
-  const { subject, grade, mode, examType, topic, minutes } = data as CreateTestReq;
-
-  if (!subject || !grade || !mode) {
-    throw new HttpsError("invalid-argument", "subject, grade and mode are required");
-  }
-  if (mode === "section" && !topic) {
-    throw new HttpsError("invalid-argument", "topic is required for section mode");
-  }
-
-  // JSON schema we want back
-  const schema = {
-    type: "object",
-    properties: {
-      title: { type: "string" },
-      durationMinutes: { type: "number" },
-      sections: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            instructions: { type: "string" },
-            items: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  type: { type: "string", enum: ["mcq", "short", "calc"] },
-                  stem: { type: "string" },
-                  choices: { type: "array", items: { type: "string" } },   // only for mcq
-                  answer: { type: "string" },                              // model answer / marking points
-                  points: { type: "number" },
-                },
-                required: ["id", "type", "stem", "answer", "points"],
+// 1) CREATE TEST
+export const createTest = functions.onCall<{topic:string; grade?:string; numQuestions?:number}>(
+  async (req) => {
+    const { topic, grade = "", numQuestions = 10 } = req.data;
+    const schema = {
+      type: "object",
+      properties: {
+        topic: { type: "string" },
+        grade: { type: "string" },
+        questions: {
+          type: "array",
+          minItems: numQuestions,
+          maxItems: numQuestions,
+          items: {
+            type: "object",
+            required: ["qid","prompt","options","correctId","concept"],
+            properties: {
+              qid: { type: "string" },
+              prompt: { type: "string" },
+              options: {
+                type: "array",
+                minItems: 4,
+                maxItems: 4,
+                items: {
+                  type: "object",
+                  required: ["id","text"],
+                  properties: {
+                    id: { type: "string", enum: ["A","B","C","D"] },
+                    text: { type: "string" }
+                  }
+                }
               },
-            },
-          },
-          required: ["title", "instructions", "items"],
-        },
+              correctId: { type: "string", enum: ["A","B","C","D"] },
+              concept: { type: "string" }
+            }
+          }
+        }
       },
-      markingGuidelines: { type: "string" },
-    },
-    required: ["title", "durationMinutes", "sections", "markingGuidelines"],
-  };
+      required: ["topic","questions"]
+    };
 
-  // If minutes is not provided, we’ll ask the model to suggest one that is
-  // typical for the subject/grade/examType/section.
-  const ask = (minutes
-    ? `Use ${minutes} minutes total.`
-    : `Suggest a realistic total time in minutes for Grade ${grade} ${subject}${examType ? " (" + examType + ")" : ""}${mode === "section" ? " section test" : " full paper"}.`);
+    const sys = `You are a tutor generating rigorous, grade-appropriate multiple-choice questions.
+Each question must be clear, unambiguous, and solvable without a calculator unless stated.`;
+    const user = `Create ${numQuestions} questions on "${topic}" ${grade ? "for grade "+grade : ""}.
+Constrain to 4 options A–D, single correct answer. Include concept tags.`;
 
-  const input = [
-    {
-      role: "system",
-      content:
-        `You are a CAPS-aligned exam setter for South African Grade ${grade} ${subject}. ` +
-        `Create a structured ${mode === "full" ? "full exam" : "section test"} with clear sections and points. ` +
-        `Use exam-ready phrasing and realistic marking points.`,
-    },
-    {
-      role: "user",
-      content: [
-        { type: "text", text: `${mode === "full" ? `Create a full paper${examType ? " for " + examType : ""}.` : `Create a section test on: ${topic}.`}` },
-        { type: "text", text: ask },
-        { type: "text", text: `Return JSON with: title, durationMinutes, sections[{title,instructions,items[{id,type(mcq|short|calc),stem,choices?,answer,points}]}], markingGuidelines.` },
-      ],
-    },
-  ];
+    const result = await structuredJSON<any>(schema, `${sys}\n\n${user}`);
+    return result; // already matches schema
+  }
+);
 
-  const out = await callResponses(OPENAI_API_KEY.value(), {
-    model: MODEL,
-    input,
-    response_format: { type: "json_schema", json_schema: { name: "exam", schema } },
-  });
+// 2) SCORE TEST
+export const scoreTest = functions.onCall<{questions:any[]; answers:{items:{qid:string,id:string}[]}}>(
+  async (req) => {
+    const { questions, answers } = req.data;
 
-  const payload = JSON.parse(out.output[0].content[0].text as string);
-  return payload;
-});
+    const schema = {
+      type: "object",
+      properties: {
+        score: { type: "integer" },
+        total: { type: "integer" },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              qid: { type: "string" },
+              isCorrect: { type: "boolean" },
+              correctId: { type: "string" },
+              explanation: { type: "string" },
+              tip: { type: "string" }
+            },
+            required: ["qid","isCorrect","correctId","explanation"]
+          }
+        },
+        weakAreas: { type: "array", items: { type: "string" } }
+      },
+      required: ["score","total","items"]
+    };
+
+    const prompt = `Given the questions and the learner's answers, return scored results.
+Explain briefly (1–2 sentences) why the correct answer is correct and what to fix when wrong.
+Aggregate weakAreas from missed concepts. Keep explanations student-friendly.  
+
+Questions JSON:
+${JSON.stringify(questions).slice(0, 40000)}
+
+Answers JSON:
+${JSON.stringify(answers).slice(0, 40000)}
+`;
+
+    const scored = await structuredJSON<any>(schema, prompt);
+    return scored;
+  }
+);
+
