@@ -5,15 +5,9 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 export default function ExampleSection({
   exampleTitle = 'EXAMPLE',
   exampleSteps = [],
-  onGenerateExamples,
-  onDownloadSummary,
-  onMarkRevised,
 }: {
   exampleTitle?: string;
   exampleSteps: string[];
-  onGenerateExamples?: () => void;
-  onDownloadSummary?: () => void;
-  onMarkRevised?: () => void;
 }) {
   return (
     <View style={s.container}>
@@ -24,21 +18,6 @@ export default function ExampleSection({
             <Text key={i} style={s.exampleText}>{line}</Text>
           ))}
         </View>
-      </View>
-
-      {/* Right buttons */}
-      <View style={s.buttonsCol}>
-        <Pressable style={s.button} onPress={onGenerateExamples}>
-          <Text style={s.buttonText}>Generate Examples</Text>
-        </Pressable>
-
-        <Pressable style={s.button} onPress={onDownloadSummary}>
-          <Text style={s.buttonText}>Download Summary</Text>
-        </Pressable>
-
-        <Pressable style={[s.button, s.largeButton]} onPress={onMarkRevised}>
-          <Text style={s.buttonText}>Mark as Chapter{'\n'}Revised</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -52,11 +31,11 @@ const s = StyleSheet.create({
     marginTop: 12,
   },
   exampleCard: {
-    backgroundColor: '#6B7280',
-    borderRadius: 22,
+   backgroundColor: '#6B7280', 
+    borderRadius: 16,
     paddingVertical: 16,
-    paddingHorizontal: 20,
-    width: 285,
+    paddingHorizontal: 14,
+    minWidth: 460,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 10,
@@ -91,29 +70,7 @@ const s = StyleSheet.create({
     lineHeight: 26,
     textAlign: 'center',
   },
-  buttonsCol: {
-    flexDirection: 'column',
-    gap: 12,
-  },
-  button: {
-    backgroundColor: '#FACC15',
-    borderRadius: 10,
-    paddingVertical: 13,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    width: 162,
-  },
-  buttonText: {
-    color: '#111827',
-    fontFamily: 'Antonio_700Bold',
-    fontSize: 16,
-    textAlign: 'center',
-  },
+  
   largeButton: {
     paddingVertical: 12,
   },

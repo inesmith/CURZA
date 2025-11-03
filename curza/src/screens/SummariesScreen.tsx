@@ -31,8 +31,11 @@ import TipBoxCard from '../components/TipBoxCard';
 // progress helpers
 import { incSummariesStudied, incChaptersCovered } from '../utils/progress';
 
-// 🔵 AI chapters util (returns total + names)
+// AI chapters util (returns total + names)
 import { getChaptersMeta } from '../utils/chaptersMeta';
+
+//  Per-chapter topics util
+import { getTopicsForChapter, type TopicSection } from '../utils/chapterTopics';
 
 export default function SummariesScreen() {
   const [showDrop, setShowDrop] = useState(false);
@@ -42,20 +45,21 @@ export default function SummariesScreen() {
   const [curriculum, setCurriculum] = useState<string>('CAPS');
   const [grade, setGrade] = useState<number | string>('12');
 
-  // subject (user’s subjects only)
-  // start with empty => “CHOOSE” until user picks
+  // subject
   const [subject, setSubject] = useState<string>('');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
   const [subjects, setSubjects] = useState<string[]>([]);
 
-  // chapter = numeric only (UI shows heading "CHAPTER")
-  // start with '-' until a chapter is selected (even after subject is chosen)
+  // chapter
   const [chapter, setChapter] = useState<string>('-');
   const [showChapterDrop, setShowChapterDrop] = useState(false);
 
-  // real chapter count for selected subject + chapter names
+  // chapters meta
   const [chaptersTotal, setChaptersTotal] = useState<number>(0);
-  const [chapterNames, setChapterNames] = useState<Record<string, string>>({});
+  const [chapterNames, setChapterNames] = useState<Record<string | number, string>>({});
+
+  // per-chapter topics
+  const [topics, setTopics] = useState<TopicSection[]>([]);
 
   // helpers
   const normalizeCurriculum = (value: any): string => {
@@ -76,21 +80,13 @@ export default function SummariesScreen() {
       .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
 
-  const formatSubjectTwoLine = (name: string) => {
-    const parts = String(name || '').trim().split(/\s+/);
-    if (parts.length <= 2) return name;
-    const first = parts.slice(0, 2).join(' ');
-    const rest = parts.slice(2).join(' ');
-    return `${first}\n${rest}`;
-  };
-
-  // Build dynamic chapter options from total (1..N)
+  // Build dynamic chapter options 1..N
   const chapterOptions = useMemo(() => {
     const n = Math.max(0, chaptersTotal || 0);
     return Array.from({ length: n }, (_, i) => String(i + 1));
   }, [chaptersTotal]);
 
-  // Pull profile (curriculum/grade/subjects)
+  // Pull profile
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -112,20 +108,21 @@ export default function SummariesScreen() {
         if (Array.isArray(signedUpSubjects) && signedUpSubjects.length > 0) {
           const cleaned = signedUpSubjects.map(titleCase).filter(Boolean);
           setSubjects(cleaned);
-          // do NOT auto-select subject here. Show “CHOOSE”.
           setSubject('');
           setChapter('-');
           setChaptersTotal(0);
           setChapterNames({});
+          setTopics([]);
         } else {
           setSubjects([]);
           setSubject('');
           setChapter('-');
           setChaptersTotal(0);
           setChapterNames({});
+          setTopics([]);
         }
       } catch {
-        // ignore; keep defaults
+        // ignore
       }
     });
     return () => unsub();
@@ -141,13 +138,12 @@ export default function SummariesScreen() {
         grade: 10,
       });
       console.log('summarizeAI ->', res.data);
-      await incSummariesStudied(); // progress update
+      await incSummariesStudied();
     } catch (err) {
       console.log('summarizeAI error:', err);
     }
   };
 
-  // Build a quick test from the current Subject/Chapter (long-press PRACTISE TESTS)
   const handleBuildQuiz = async () => {
     try {
       const res = await createTestAI({
@@ -164,16 +160,18 @@ export default function SummariesScreen() {
     }
   };
 
-  // when subject is chosen, fetch real chapter total + names,
-  // keep chapter at '-' (you’ll choose it next)
+  // Select subject → fetch chapter meta (keep chapter "-")
   const onSelectSubject = async (subj: string) => {
     setSubject(subj);
     setShowSubjectDrop(false);
-    setChapter('-'); // ← keep "-" until user picks a chapter
+    setChapter('-');
+    setTopics([]); // clear topics until a chapter is chosen
     try {
       const meta = await getChaptersMeta({ curriculum, grade, subject: subj });
       setChaptersTotal(meta.total || 10);
-      setChapterNames(meta.names || {});
+      // accept names keyed by number or string
+      const names = (meta.names || {}) as Record<string | number, string>;
+      setChapterNames(names);
     } catch (e) {
       console.log('getChaptersMeta failed, defaulting:', e);
       setChaptersTotal(10);
@@ -181,31 +179,58 @@ export default function SummariesScreen() {
     }
   };
 
-  // when chapter is picked manually, update and bump summaries studied
+  // Select chapter → mark studied + fetch topics
   const onSelectChapter = async (n: string) => {
     setChapter(n);
     setShowChapterDrop(false);
+    setTopics([]); // reset while loading
     try {
-      await incSummariesStudied(); // dashboard "My Progress" updates via live listener
+      await incSummariesStudied();
     } catch (e) {
       console.log('incSummariesStudied (on chapter select) failed:', e);
     }
+    try {
+      const chapNum = String(n);
+      const chapName =
+        chapterNames[chapNum] ??
+        chapterNames[Number(chapNum) as any] ??
+        '';
+      const t = await getTopicsForChapter({
+        curriculum,
+        grade,
+        subject: subject || '',
+        chapter: chapNum,
+        chapterName: chapName,
+      });
+      setTopics(t || []);
+    } catch (e) {
+      console.log('getTopicsForChapter failed:', e);
+      setTopics([]);
+    }
   };
 
-  // Derived display values
+  // Displays
   const subjectDisplay = subject ? subject : 'CHOOSE';
-  const chapterDisplay = !subject ? '–' : (chapter !== '-' ? `${chapter} / ${chaptersTotal || ''}` : '-');
+  const chapterDisplay = !subject
+    ? '–'
+    : (chapter !== '-' ? `${chapter} / ${chaptersTotal || ''}` : '-');
 
-  // Topic bar: “Select Your Subject & Chapter” until both chosen
+  const currentChapterName =
+    chapter !== '-'
+      ? (chapterNames[String(chapter)] ??
+         chapterNames[Number(chapter) as any] ??
+         '')
+      : '';
+
   const topicBarText =
     subject && chapter !== '-'
-      ? `${subject.toUpperCase()} – CHAPTER ${chapter}${chapterNames[chapter] ? ` – ${chapterNames[chapter]}` : ''}`
+      ? `${subject.toUpperCase()} – CHAPTER ${chapter}${currentChapterName ? ` – ${currentChapterName}` : ''}`
       : 'Select Your Subject & Chapter';
 
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left rail artwork (base layers) */}
+        {/* Left rail artwork */}
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           <Image source={require('../../assets/DashboardTab.png')} style={s.tab} resizeMode="contain" />
           <Image source={require('../../assets/PractiseTab.png')} style={s.tab} resizeMode="contain" />
@@ -213,12 +238,11 @@ export default function SummariesScreen() {
           <Image source={require('../../assets/ProfileTab.png')} style={s.tab} resizeMode="contain" />
         </View>
 
-        {/* When dropdown is open, show the different-looking Summaries rail art */}
         {showDrop && (
           <Image source={require('../../assets/SummariesDropTab.png')} style={s.dropTab} resizeMode="contain" />
         )}
 
-        {/* Clickable text labels */}
+        {/* Clickable rail labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable
             onPress={() => setShowDrop((v) => !v)}
@@ -272,9 +296,8 @@ export default function SummariesScreen() {
             </Pressable>
           </View>
 
-          {/* 🔵 TOP-RIGHT BLUE BLOCKS (4 pills) */}
+          {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
-            {/* Row 1: Curriculum + Grade */}
             <View style={s.row}>
               <View style={[s.pill, s.curriculumPill]}>
                 <Text style={s.pillTop}>CURRICULUM</Text>
@@ -287,9 +310,7 @@ export default function SummariesScreen() {
               </View>
             </View>
 
-            {/* Row 2: Subject + Chapter */}
             <View style={s.row2}>
-              {/* SUBJECT */}
               <View style={[s.pill, s.subjectPill]}>
                 <Pressable
                   onPress={() => setShowSubjectDrop(true)}
@@ -303,18 +324,17 @@ export default function SummariesScreen() {
                       numberOfLines={1}
                       ellipsizeMode="tail"
                     >
-                      {subjectDisplay /* shows selected subject or CHOOSE */}
+                      {subjectDisplay}
                     </Text>
                   </View>
                   <Text style={s.chev}>▾</Text>
                 </Pressable>
               </View>
 
-              {/* CHAPTER (numeric only) */}
               <View style={[s.pill, s.chapterPill]}>
                 <Pressable
                   onPress={() => {
-                    if (!subject) return; // disabled until subject selected
+                    if (!subject) return;
                     setShowChapterDrop(true);
                   }}
                   hitSlop={6}
@@ -323,7 +343,7 @@ export default function SummariesScreen() {
                   <View style={{ flexShrink: 1, minWidth: 0 }}>
                     <Text style={s.pillTop}>CHAPTER</Text>
                     <Text style={s.pillMain} numberOfLines={1} ellipsizeMode="tail">
-                      {chapterDisplay /* '-' until chosen; then "n / total" */}
+                      {chapterDisplay}
                     </Text>
                   </View>
                   <Text style={s.chev}>▾</Text>
@@ -359,7 +379,7 @@ export default function SummariesScreen() {
               </View>
             </Modal>
 
-            {/* Chapter modal (numeric only, driven by chaptersTotal) */}
+            {/* Chapter modal */}
             <Modal
               transparent
               visible={showChapterDrop}
@@ -403,46 +423,75 @@ export default function SummariesScreen() {
                 contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
                 showsVerticalScrollIndicator
               >
-                {/* Topic bar at top of the scroll box */}
+                {/* Topic bar */}
                 <View style={s.topicBar}>
-                  {/* dynamic label */}
                   <Text style={s.topicText}>{topicBarText}</Text>
                 </View>
 
-                <View style={s.contentRow}>
-                  <View style={s.leftCol}>
-                    <KeyConceptsCard
-                      concepts={[
-                        'EXPRESSIONS CAN BE SIMPLIFIED BY COMBINING LIKE TERMS.',
-                        'FACTORISATION IS USED TO REWRITE EXPRESSIONS MORE SIMPLY.',
-                        'THE DISTRIBUTIVE PROPERTY: A(B + C) = AB + AC.',
-                      ]}
-                    />
-                    <ExampleSection
-                      exampleSteps={['SIMPLIFY: 2X + 3X - 5', ' = (2 + 3)X - 5', ' = 5X - 5']}
-                      onGenerateExamples={() => console.log('Generate Examples')}
-                      onDownloadSummary={() => console.log('Download Summary')}
-                      onMarkRevised={async () => { try { await incChaptersCovered(); } catch (e) { console.log(e);} }} // progress update
-                    />
-                  </View>
-
-                  <View style={s.rightCol}>
-                    <FormulasCard
-                      formulas={[
-                        '(X + Y)² = X² + 2XY + Y²',
-                        '(X - Y)² = X² - 2XY + Y²',
-                        '(X + A)(X + B) = X² + (A + B)X + AB',
-                      ]}
-                    />
-                    <TipBoxCard
-                      tips={[
-                        'ALWAYS GROUP LIKE TERMS BEFORE YOU FACTORISE.',
-                        'EXAMS USUALLY GIVE 1 MARK FOR WRITING THE THEOREM IN GEOMETRY PROOFS.',
-                        'COMMON MISTAKE: FORGETTING TO SIMPLIFY FRACTIONS AT THE LAST STEP.',
-                      ]}
-                    />
-                  </View>
+                {/*  Three long yellow buttons */}
+                <View style={s.actionRow}>
+                  <Pressable style={s.yellowBtn} onPress={() => console.log('Generate More Examples')}>
+                    <Text style={s.yellowBtnText}>Generate More Examples</Text>
+                  </Pressable>
+                  <Pressable style={s.yellowBtn} onPress={() => console.log('Download Summary')}>
+                    <Text style={s.yellowBtnText}>Download Summary</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.yellowBtn}
+                    onPress={async () => {
+                      try { await incChaptersCovered(); } catch (e) { console.log(e); }
+                    }}
+                  >
+                    <Text style={s.yellowBtnText}>Mark Revised</Text>
+                  </Pressable>
                 </View>
+
+                {/* 🔵 Blue content bar placeholder removed — now we render per-topic sections */}
+
+                {/* Render Topic 1..N */}
+                {topics.map((t, idx) => (
+                  <View key={`${idx}-${t.title}`} style={{ marginTop: 0 }}>
+                    {/* Blue bar per topic */}
+                    <View style={s.blueBar}>
+                      <Text style={s.blueBarText}>
+                        {`Topic ${idx + 1}: ${t.title}`}
+                      </Text>
+                    </View>
+
+                    <View style={s.contentRow}>
+                      <View style={s.leftCol}>
+                        <KeyConceptsCard
+                          title="KEY CONCEPTS"
+                          concepts={Array.isArray(t.keyConcepts) ? t.keyConcepts : []}
+                        />
+                        <ExampleSection
+                          exampleTitle="EXAMPLE"
+                          exampleSteps={Array.isArray(t.exampleSteps) ? t.exampleSteps : []}
+                        />
+                      </View>
+
+                      <View style={s.rightCol}>
+                        <FormulasCard
+                          title="FORMULAS"
+                          formulas={Array.isArray(t.formulas) ? t.formulas : []}
+                        />
+                        <TipBoxCard
+                          title="TIP BOX"
+                          tips={Array.isArray(t.tips) ? t.tips : []}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                ))}
+
+                {/* If no topics yet and both subject+chapter chosen, keep UX obvious */}
+                {subject && chapter !== '-' && topics.length === 0 && (
+                  <View style={{ paddingVertical: 8 }}>
+                    <Text style={{ color: '#E5E7EB', textAlign: 'center' }}>
+                      Loading topics for this chapter…
+                    </Text>
+                  </View>
+                )}
               </ScrollView>
             </View>
           </View>
@@ -687,6 +736,52 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     letterSpacing: 0.4,
     alignItems: 'flex-start',
+  },
+
+  /* Buttons row under topic bar */
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 0,
+    marginBottom: 14,
+  },
+  yellowBtn: {
+    flex: 1,
+    backgroundColor: '#FACC15',
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 46,
+  },
+  yellowBtnText: {
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 18,
+    letterSpacing: 0.3,
+    color: '#111827',
+  },
+
+  /* Blue bar reused per topic section */
+  blueBar: {
+    backgroundColor: '#2763F6',
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'stretch',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    justifyContent: 'flex-start',
+  },
+  blueBarText: {
+    color: '#FFFFFF',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 20,
+    textAlign: 'center',
+    letterSpacing: 0.3,
   },
 
   contentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 0 },

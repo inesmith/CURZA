@@ -26,7 +26,6 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  where,
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase';
 
@@ -42,6 +41,9 @@ import {
 
 // topic totals helper
 import { getTopicTotal } from '../utils/topicTotals';
+
+// subject-specific progress (increments may be called from other screens)
+import { incSummariesStudied, incChaptersCovered, incTestsCompleted } from '../utils/progress';
 
 const SWOOSH_W = 380;
 
@@ -84,6 +86,13 @@ const cleanSubject = (s: string) =>
     .split(/\s+/)
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
     .join(' ');
+
+const toSlug = (s: string) =>
+  String(s || 'default')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'default';
 // ------- end helpers -------
 
 type ActivityItem = {
@@ -115,7 +124,7 @@ export default function DashboardScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTodoText, setNewTodoText] = useState('');
 
-  // progress state (live)
+  // progress state (live for currently selected subject)
   const [stats, setStats] = useState({
     summariesStudied: 0,
     chaptersCovered: 0,
@@ -130,14 +139,13 @@ export default function DashboardScreen() {
   const [upcomingTests, setUpcomingTests] = useState<string[]>([]);
   const [weakAreas, setWeakAreas] = useState<string[]>([]);
 
-  // Auth + Profile & Subjects + To-Dos (auth-guarded listener)
+  // Auth + Profile & Subjects + To-Dos + Progress
   useEffect(() => {
     let unsubTodos: undefined | (() => void);
     let unsubProgress: undefined | (() => void);
     let unsubSuggested: undefined | (() => void);
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
-      // clean previous subscriptions on auth change
       if (unsubTodos) { unsubTodos(); unsubTodos = undefined; }
       if (unsubProgress) { unsubProgress(); unsubProgress = undefined; }
       if (unsubSuggested) { unsubSuggested(); unsubSuggested = undefined; }
@@ -227,49 +235,48 @@ export default function DashboardScreen() {
             });
             setTodos(list);
           },
-          (err) => {
-            console.log('Todos snapshot error:', err);
+          () => {
             show('Could not load your To-Do list. Permissions or network issue.', 'error', 3000);
           },
         );
 
-        // progress: ensure + listen
+        // ===== Subject-specific progress listener with global fallback =====
         try {
-          const pRefEnsure = doc(db, 'users', user.uid, 'progress', 'default');
-          const pSnapEnsure = await getDoc(pRefEnsure);
-          if (!pSnapEnsure.exists()) {
-            await setDoc(pRefEnsure, {
-              summariesStudied: 0,
-              chaptersCovered: 0,
-              testsCompleted: 0,
-              updatedAt: serverTimestamp(),
-            });
-          }
-        } catch (errEnsure) {
-          // ignore ensure errors but continue to set up listener
-          console.log('Could not ensure progress doc:', errEnsure);
+          const subjSlug = toSlug(chosenSubject);
+          const pRef = doc(db, 'users', user.uid, 'progressBySubject', subjSlug);
+          unsubProgress = onSnapshot(
+            pRef,
+            async (pSnap) => {
+              const d = pSnap.data() as any;
+              if (d) {
+                setStats({
+                  summariesStudied: d?.summariesStudied ?? 0,
+                  chaptersCovered: d?.chaptersCovered ?? 0,
+                  testsCompleted: d?.testsCompleted ?? 0,
+                });
+              } else {
+                // global fallback if subject doc doesn't exist yet
+                const gRef = doc(db, 'users', user.uid, 'progress', 'default');
+                try {
+                  const gSnap = await getDoc(gRef);
+                  const g = gSnap.data() as any;
+                  setStats({
+                    summariesStudied: g?.summariesStudied ?? 0,
+                    chaptersCovered: g?.chaptersCovered ?? 0,
+                    testsCompleted: g?.testsCompleted ?? 0,
+                  });
+                } catch {
+                  setStats({ summariesStudied: 0, chaptersCovered: 0, testsCompleted: 0 });
+                }
+              }
+            },
+            (err) => {
+              console.log('Progress snapshot error:', err);
+            },
+          );
+        } catch (e) {
+          console.log('progress listener setup failed:', e);
         }
-        const pRef = doc(db, 'users', user.uid, 'progress', 'default');
-        unsubProgress = onSnapshot(
-          pRef,
-          (pSnap) => {
-            const d = pSnap.data() as any;
-            setStats({
-              summariesStudied: d?.summariesStudied ?? 0,
-              chaptersCovered: d?.chaptersCovered ?? 0,
-              testsCompleted: d?.testsCompleted ?? 0,
-            });
-          },
-          (err) => {
-            console.log('Progress snapshot error:', err);
-          },
-        );
-
-        // AI Suggested To-Dos
-        await refreshSuggestedTodos(user.uid, { curriculum: curr, grade: grd, subject: chosenSubject });
-        unsubSuggested = subscribeSuggestedTodos(user.uid, (items) => {
-          setSuggestedTodos(items);
-        });
 
         // ===== Subject/grade/curriculum-aware dynamic bits =====
 
@@ -418,7 +425,7 @@ export default function DashboardScreen() {
       if (unsubSuggested) unsubSuggested();
       unsubAuth();
     };
-  }, [show]);
+  }, [show]); // keep stable; avoid re-subscribing when weakAreas changes
 
   // Rebuild subject-specific data when subject changes manually from dropdown
   useEffect(() => {
@@ -434,9 +441,34 @@ export default function DashboardScreen() {
         setTotalTopics(12);
       }
 
+      // Refresh progress snapshot for this subject (quick fetch; live listener is in auth block)
+      try {
+        const subjSlug = toSlug(subject);
+        const pRef = doc(db, 'users', user.uid, 'progressBySubject', subjSlug);
+        const pSnap = await getDoc(pRef);
+        const d = pSnap.data() as any;
+        if (d) {
+          setStats({
+            summariesStudied: d?.summariesStudied ?? 0,
+            chaptersCovered: d?.chaptersCovered ?? 0,
+            testsCompleted: d?.testsCompleted ?? 0,
+          });
+        } else {
+          const gRef = doc(db, 'users', user.uid, 'progress', 'default');
+          const gSnap = await getDoc(gRef);
+          const g = gSnap.data() as any;
+          setStats({
+            summariesStudied: g?.summariesStudied ?? 0,
+            chaptersCovered: g?.chaptersCovered ?? 0,
+            testsCompleted: g?.testsCompleted ?? 0,
+          });
+        }
+      } catch {
+        setStats({ summariesStudied: 0, chaptersCovered: 0, testsCompleted: 0 });
+      }
+
       // Refresh weak areas + upcoming tests for this subject
       try {
-        // Weak areas again
         const resultsCol = collection(db, 'users', user.uid, 'results');
         const resQ = query(resultsCol, orderBy('createdAt', 'desc'));
         const resSnap = await getDocs(resQ);
@@ -466,8 +498,8 @@ export default function DashboardScreen() {
       }
 
       try {
-        // Upcoming tests from weak areas or summaries
         const suggs: string[] = [];
+        // build from the freshly computed weakAreas (not the stale state)
         weakAreas.forEach((w) => suggs.push(`PRACTICE MINI-TEST: ${w}`));
         if (suggs.length === 0) {
           const sumsCol = collection(db, 'users', user.uid, 'summaries');
@@ -548,12 +580,11 @@ export default function DashboardScreen() {
     }
   };
 
-  // Suggested actions (these also update progress)
   const completeSuggested = async (id: string) => {
     const user = auth.currentUser;
     if (!user) return;
     try {
-      await applySuggestedTodo(user.uid, id); // moves to todos + increments progress
+      await applySuggestedTodo(user.uid, id);
       show('Added to your To-Do list. Progress updated!', 'success', 2200);
     } catch {
       show('Could not apply suggestion right now.', 'error', 2600);
@@ -585,8 +616,6 @@ export default function DashboardScreen() {
 
   // Actions for cards (no visual changes)
   const startSelectedUpcoming = () => {
-    // The card ensures something is selected (button disabled otherwise).
-    // Navigate to your practice flow.
     navigation.navigate('PracticeTests');
   };
   const practiceSelectedWeakArea = () => {
@@ -734,7 +763,7 @@ export default function DashboardScreen() {
                 setHeadingW(width);
               }}
             >
-              {firstName ? `WELCOME BACK, ${firstName.toUpperCase()}` : 'WELCOME BACK'}
+              {headingText}
             </Text>
 
             <Text style={s.sub}>Ready to learn today?</Text>
@@ -751,7 +780,7 @@ export default function DashboardScreen() {
                   <View style={s.leftCol}>
                     <ProgressBlock
                       {...({
-                        stats, // live from Firestore
+                        stats, // live for selected subject
                       } as any)}
                     />
 
@@ -783,8 +812,8 @@ export default function DashboardScreen() {
                         ...todos.map((t) => ({
                           ...t,
                           onPress: () => {},
-                          onLongPress: () => completeTodo(t.id), // complete (removes)
-                          onDelete: () => deleteTodo(t.id),     // delete (removes)
+                          onLongPress: () => completeTodo(t.id),
+                          onDelete: () => deleteTodo(t.id),
                         })),
                       ]}
                       onAdd={handleAddTodo}
@@ -870,7 +899,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   imageWrapper: {
     width: '94%',
     height: '95%',
@@ -883,20 +911,17 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     position: 'relative',
   },
-
   tabTextWrapper: {
     position: 'absolute',
     left: '4.5%',
     alignItems: 'center',
     zIndex: 5,
   },
-
   posActive: { top: '15%' },
   posSummaries: { top: '22%' },
   posPractice: { top: '30%' },
   posResults: { top: '39%' },
   posProfile: { top: '48%' },
-
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
     fontSize: 20,
@@ -908,20 +933,17 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-
   dashboardTab: { fontWeight: 'bold', marginTop: -115 },
   summariesTab: { opacity: 0.8, marginTop: -15 },
   practiseOpenTab: { opacity: 0.8, marginTop: 20 },
   resultsTab: { opacity: 0.8, marginTop: 45 },
   profileTab: { opacity: 0.8, marginTop: 72 },
-
   tab: {
     position: 'absolute',
     height: '100%',
     width: '100%',
     zIndex: 1,
   },
-
   card: {
     flex: 1,
     borderRadius: 40,
@@ -929,7 +951,6 @@ const s = StyleSheet.create({
     position: 'relative',
     zIndex: 1,
   },
-
   topRightWrap: {
     position: 'absolute',
     top: 22,
@@ -937,7 +958,6 @@ const s = StyleSheet.create({
     zIndex: 6,
     width: 360,
   },
-
   row: {
     flexDirection: 'row',
     gap: 14,
@@ -945,7 +965,6 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
     marginTop: 15,
   },
-
   pill: {
     flexGrow: 1,
     backgroundColor: '#2763F6',
@@ -958,7 +977,6 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
-
   curriculumPill: {
     flexGrow: 0,
     width: 135,
@@ -967,7 +985,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   gradePill: {
     flexGrow: 0,
     width: 110,
@@ -976,7 +993,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     height: 55,
   },
-
   subjectPill: {
     flexGrow: 0,
     width: 260,
@@ -985,14 +1001,12 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     height: 55,
   },
-
   pillTop: {
     color: 'rgba(255,255,255,0.85)',
     fontFamily: 'AlumniSans_500Medium',
     fontSize: 12,
     letterSpacing: 1,
   },
-
   pillMain: {
     color: '#FFFFFF',
     fontFamily: 'Antonio_700Bold',
@@ -1000,13 +1014,11 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
     marginTop: 2,
   },
-
   chev: {
     color: '#FFFFFF',
     fontSize: 18,
     marginLeft: 8,
   },
-
   ddBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -1014,7 +1026,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
-
   ddSheet: {
     width: '100%',
     maxWidth: 520,
@@ -1022,36 +1033,30 @@ const s = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
-
   ddTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 8,
   },
-
   ddRow: {
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 10,
   },
-
   ddRowText: {
     fontSize: 16,
     color: '#1F2937',
   },
-
   ddCancel: {
     marginTop: 8,
     alignSelf: 'flex-end',
     padding: 8,
   },
-
   ddCancelText: {
     color: '#1F2937',
     textDecorationLine: 'underline',
   },
-
   cardInner: {
     flex: 1,
     borderRadius: 40,
@@ -1059,12 +1064,10 @@ const s = StyleSheet.create({
     marginLeft: 210,
     marginRight: 14,
   },
-
   cardImage: {
     borderRadius: 40,
     resizeMode: 'cover',
   },
-
   swoosh: {
     position: 'absolute',
     top: 20,
@@ -1074,7 +1077,6 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 2,
   },
-
   dot: {
     position: 'absolute',
     top: 80,
@@ -1083,7 +1085,6 @@ const s = StyleSheet.create({
     zIndex: 1,
     opacity: 0.95,
   },
-
   heading: {
     fontFamily: 'Antonio_700Bold',
     color: 'white',
@@ -1096,7 +1097,6 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-
   sub: {
     fontFamily: 'AlumniSans_500Medium',
     color: '#E5E7EB',
@@ -1108,7 +1108,6 @@ const s = StyleSheet.create({
     opacity: 0.95,
     zIndex: 2,
   },
-
   bigBlock: {
     backgroundColor: 'none',
     borderRadius: 16,
@@ -1125,28 +1124,23 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-
   bigBlockScroll: {
     flex: 1,
   },
-
   contentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
   },
-
   leftCol: {
     maxWidth: 430,
     flexShrink: 0,
   },
-
   rightCol: {
     maxWidth: 520,
     flexShrink: 1,
     alignSelf: 'stretch',
   },
-
   cornerLogo: {
     position: 'absolute',
     bottom: 40,
@@ -1155,13 +1149,11 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 10,
   },
-
   smallCardsRow: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 12,
   },
-
   recentSpacer: {
     marginTop: 12,
   },

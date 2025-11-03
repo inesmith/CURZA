@@ -27,7 +27,7 @@ export default function TipBoxCard({
 const s = StyleSheet.create({
   card: {
     backgroundColor: '#2563EB',
-    borderRadius: 22,
+    borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 20,
     maxWidth: 380,

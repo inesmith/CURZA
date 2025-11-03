@@ -24,7 +24,7 @@ export default function KeyConceptsCard({
 const s = StyleSheet.create({
   card: {
     backgroundColor: '#6B7280', 
-    borderRadius: 22,
+    borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 14,
     minWidth: 460,

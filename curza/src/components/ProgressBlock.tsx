@@ -6,7 +6,7 @@ import Svg, { Circle } from 'react-native-svg';
 type Stats = {
   summariesStudied: number;
   chaptersCovered: number;
-  quizzesDone?: number; // not used in chart, kept optional for compatibility
+  quizzesDone?: number;
   testsCompleted: number;
 };
 
@@ -57,7 +57,6 @@ export default function ProgressBlock({
     return circle;
   });
 
-  // show 0% when nothing has been logged
   const totalDone =
     (stats?.summariesStudied ?? 0) +
     (stats?.chaptersCovered ?? 0) +
@@ -65,7 +64,7 @@ export default function ProgressBlock({
 
   const overallPct = totalDone === 0
     ? 0
-    : Math.round(segments.reduce((acc, seg) => acc + seg.pct, 0) * 25); 
+    : Math.round(segments.reduce((acc, seg) => acc + seg.pct, 0) * 25);
 
   return (
     <View style={s.wrap}>

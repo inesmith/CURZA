@@ -1,83 +1,98 @@
-// functions/src/chaptersMeta.ts
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import OpenAI from "openai";
+import { onCall } from "firebase-functions/v2/https";
+import { openai, MODEL } from "./openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const FALLBACK = {
+  total: 10,
+  names: {
+    "1": "Algebraic Expressions",
+    "2": "Factorisation",
+    "3": "Equations & Inequalities",
+    "4": "Functions & Graphs",
+    "5": "Trigonometry",
+    "6": "Sequences & Series",
+    "7": "Analytical Geometry",
+    "8": "Probability",
+    "9": "Statistics",
+    "10": "Financial Mathematics"
+  }
+};
 
-// Public callable (no auth required) – safe because it returns only generic metadata
-export const chaptersMeta = onCall<{
-  curriculum: string | number;
-  grade: string | number;
-  subject: string;
-}>(async (req) => {
-  try {
-    const { curriculum, grade, subject } = req.data || {};
-    if (!curriculum || !grade || !subject) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Required fields: curriculum, grade, subject"
-      );
-    }
+export const chaptersMeta = onCall({ region: "us-central1" }, async (req) => {
+  const { curriculum, grade, subject } = req.data || {};
+  if (!subject) return { total: 0, names: {} };
 
-    // Prompt model to return strict JSON: { total:number, chapters:[{number:number,name:string}] }
-    const sys =
-      "You generate accurate chapter structures for school subjects. " +
-      "Return ONLY valid JSON with shape: {\"total\": number, \"chapters\": [{\"number\": number, \"name\": string}, ...] }. " +
-      "No prose, no markdown, no comments.";
+  const cur = String(curriculum || "CAPS").trim();
+  const grd = String(grade || "").trim();
+  const subj = String(subject).trim();
 
-    const user = `
-Curriculum: ${String(curriculum)}
-Grade: ${String(grade)}
-Subject: ${String(subject)}
-Task: Provide the canonical chapter count and precise chapter names for this subject in this curriculum & grade.
-Output: Strict JSON only.
+  const system = `You are a South African school curriculum assistant.
+Return JSON only. Keep chapter names concise and commonly used in textbooks and past papers.
+Do NOT include numbering prefixes in the names (no "Chapter 1: ..."), just clean titles.
+If the syllabus differs by curriculum (CAPS, IEB, Cambridge, IB), choose the most standard naming for the given curriculum and grade.`;
+
+  const user = `
+For curriculum: ${cur}
+Grade: ${grd || "—"}
+Subject: ${subj}
+
+Return exactly this JSON shape:
+{
+  "total": <number>,
+  "names": {
+    "1": "First chapter name",
+    "2": "Second chapter name",
+    ...
+  }
+}
+Rules:
+- Provide the full list for the year level (not just a few).
+- "total" must equal the number of keys in "names".
+- Keep names short (max ~6 words), accurate, and conventional for this syllabus.
 `;
 
-    const resp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: sys },
-        { role: "user", content: user },
-      ],
+  const schema = {
+    type: "object",
+    required: ["total", "names"],
+    properties: {
+      total: { type: "integer", minimum: 1, maximum: 40 },
+      names: {
+        type: "object",
+        additionalProperties: { type: "string" }
+      }
+    }
+  };
+
+  let txt = "";
+  try {
+    const res = await openai.responses.create({
+      model: MODEL,
+      input: [{ role: "system", content: system }, { role: "user", content: user }],
+      // @ts-ignore
+      response_format: { type: "json_schema", json_schema: { name: "ChaptersMeta", schema } }
+    });
+    txt =
+      (res as any)?.output_text ??
+      (res as any)?.output?.[0]?.content?.[0]?.text ??
+      "";
+  } catch {
+    return FALLBACK;
+  }
+
+  try {
+    const parsed = JSON.parse(txt);
+    const namesObj = parsed?.names && typeof parsed.names === "object" ? parsed.names : {};
+    const keys = Object.keys(namesObj).sort((a, b) => Number(a) - Number(b));
+
+    const normalized: Record<string, string> = {};
+    keys.forEach((k, i) => {
+      const val = String(namesObj[k] ?? "").trim();
+      if (val) normalized[String(i + 1)] = val;
     });
 
-    const raw = resp.choices?.[0]?.message?.content?.trim() || "{}";
+    if (!Object.keys(normalized).length) return FALLBACK;
 
-    // Be strict: must be valid JSON
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new HttpsError(
-        "internal",
-        "Model did not return valid JSON."
-      );
-    }
-
-    // Minimal validation + normalization
-    const total =
-      Number(parsed?.total) && Number(parsed?.total) > 0
-        ? Number(parsed.total)
-        : 10;
-
-    const chaptersArr = Array.isArray(parsed?.chapters) ? parsed.chapters : [];
-    const chapters = chaptersArr
-      .map((c: any) => ({
-        number: Number(c?.number) || null,
-        name: String(c?.name ?? "").trim(),
-      }))
-      .filter((c: any) => c.number && c.name);
-
-    return {
-      total,
-      chapters,
-    };
-  } catch (e: any) {
-    console.error("chaptersMeta failed:", e);
-    throw new HttpsError(
-      e?.code === "invalid-argument" ? "invalid-argument" : "internal",
-      e?.message || "chaptersMeta failed"
-    );
+    return { total: Object.keys(normalized).length, names: normalized };
+  } catch {
+    return FALLBACK;
   }
 });
