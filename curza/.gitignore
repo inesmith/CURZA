@@ -42,3 +42,10 @@ yarn-error.*
 
 printf "\n# 🚫 local secrets - do not commit\n.env\n.env.*\n.env.local\n.env.*.local\nfunctions/.runtimeconfig.json\n" >> .gitignore
 
+# secrets
+.env
+**/.env
+curza/.env
+curza/functions/.env
+functions/.runtimeconfig.json
+curza/functions/.runtimeconfig.json
