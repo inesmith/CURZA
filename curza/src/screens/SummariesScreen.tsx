@@ -1,5 +1,5 @@
 // src/screens/SummariesScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,9 @@ import TipBoxCard from '../components/TipBoxCard';
 // progress helpers
 import { incSummariesStudied, incChaptersCovered } from '../utils/progress';
 
+// 🔵 AI chapters util (returns total + names)
+import { getChaptersMeta } from '../utils/chaptersMeta';
+
 export default function SummariesScreen() {
   const [showDrop, setShowDrop] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -40,13 +43,19 @@ export default function SummariesScreen() {
   const [grade, setGrade] = useState<number | string>('12');
 
   // subject (user’s subjects only)
-  const [subject, setSubject] = useState<string>('Mathematics');
+  // start with empty => “CHOOSE” until user picks
+  const [subject, setSubject] = useState<string>('');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
   const [subjects, setSubjects] = useState<string[]>([]);
 
   // chapter = numeric only (UI shows heading "CHAPTER")
-  const [chapter, setChapter] = useState<string>('1');
+  // start with '-' until a chapter is selected (even after subject is chosen)
+  const [chapter, setChapter] = useState<string>('-');
   const [showChapterDrop, setShowChapterDrop] = useState(false);
+
+  // real chapter count for selected subject + chapter names
+  const [chaptersTotal, setChaptersTotal] = useState<number>(0);
+  const [chapterNames, setChapterNames] = useState<Record<string, string>>({});
 
   // helpers
   const normalizeCurriculum = (value: any): string => {
@@ -75,6 +84,12 @@ export default function SummariesScreen() {
     return `${first}\n${rest}`;
   };
 
+  // Build dynamic chapter options from total (1..N)
+  const chapterOptions = useMemo(() => {
+    const n = Math.max(0, chaptersTotal || 0);
+    return Array.from({ length: n }, (_, i) => String(i + 1));
+  }, [chaptersTotal]);
+
   // Pull profile (curriculum/grade/subjects)
   useEffect(() => {
     const auth = getAuth();
@@ -97,14 +112,17 @@ export default function SummariesScreen() {
         if (Array.isArray(signedUpSubjects) && signedUpSubjects.length > 0) {
           const cleaned = signedUpSubjects.map(titleCase).filter(Boolean);
           setSubjects(cleaned);
-          if (profile?.subject) {
-            const chosen = titleCase(profile.subject);
-            setSubject(cleaned.includes(chosen) ? chosen : cleaned[0]);
-          } else {
-            setSubject(cleaned[0]);
-          }
+          // do NOT auto-select subject here. Show “CHOOSE”.
+          setSubject('');
+          setChapter('-');
+          setChaptersTotal(0);
+          setChapterNames({});
         } else {
-          setSubjects([]); // only show what user signed up for
+          setSubjects([]);
+          setSubject('');
+          setChapter('-');
+          setChaptersTotal(0);
+          setChapterNames({});
         }
       } catch {
         // ignore; keep defaults
@@ -133,20 +151,56 @@ export default function SummariesScreen() {
   const handleBuildQuiz = async () => {
     try {
       const res = await createTestAI({
-        subject,
+        subject: subject || '—',
         grade,
         mode: 'section',
-        topic: `Chapter ${chapter}`,
+        topic: chapter && chapter !== '-' ? `Chapter ${chapter}` : 'Chapter 1',
         count: 10,
         timed: false,
       });
       console.log('createTestAI(section) ->', res.data);
-      // Optionally route to TestRunner here if you want:
-      // navigation.navigate('TestRunner', { ... })
     } catch (err) {
       console.log('createTestAI(section) error:', err);
     }
   };
+
+  // when subject is chosen, fetch real chapter total + names,
+  // keep chapter at '-' (you’ll choose it next)
+  const onSelectSubject = async (subj: string) => {
+    setSubject(subj);
+    setShowSubjectDrop(false);
+    setChapter('-'); // ← keep "-" until user picks a chapter
+    try {
+      const meta = await getChaptersMeta({ curriculum, grade, subject: subj });
+      setChaptersTotal(meta.total || 10);
+      setChapterNames(meta.names || {});
+    } catch (e) {
+      console.log('getChaptersMeta failed, defaulting:', e);
+      setChaptersTotal(10);
+      setChapterNames({});
+    }
+  };
+
+  // when chapter is picked manually, update and bump summaries studied
+  const onSelectChapter = async (n: string) => {
+    setChapter(n);
+    setShowChapterDrop(false);
+    try {
+      await incSummariesStudied(); // dashboard "My Progress" updates via live listener
+    } catch (e) {
+      console.log('incSummariesStudied (on chapter select) failed:', e);
+    }
+  };
+
+  // Derived display values
+  const subjectDisplay = subject ? subject : 'CHOOSE';
+  const chapterDisplay = !subject ? '–' : (chapter !== '-' ? `${chapter} / ${chaptersTotal || ''}` : '-');
+
+  // Topic bar: “Select Your Subject & Chapter” until both chosen
+  const topicBarText =
+    subject && chapter !== '-'
+      ? `${subject.toUpperCase()} – CHAPTER ${chapter}${chapterNames[chapter] ? ` – ${chapterNames[chapter]}` : ''}`
+      : 'Select Your Subject & Chapter';
 
   return (
     <View style={s.page}>
@@ -211,8 +265,7 @@ export default function SummariesScreen() {
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
-          {/* Quick link */
-          }
+          {/* Quick link */}
           <View style={[s.tabTextWrapper, s.posSummaries]}>
             <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
@@ -250,7 +303,7 @@ export default function SummariesScreen() {
                       numberOfLines={1}
                       ellipsizeMode="tail"
                     >
-                      {subject || '—'}
+                      {subjectDisplay /* shows selected subject or CHOOSE */}
                     </Text>
                   </View>
                   <Text style={s.chev}>▾</Text>
@@ -260,14 +313,17 @@ export default function SummariesScreen() {
               {/* CHAPTER (numeric only) */}
               <View style={[s.pill, s.chapterPill]}>
                 <Pressable
-                  onPress={() => setShowChapterDrop(true)}
+                  onPress={() => {
+                    if (!subject) return; // disabled until subject selected
+                    setShowChapterDrop(true);
+                  }}
                   hitSlop={6}
-                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: subject ? 1 : 0.5 }}
                 >
                   <View style={{ flexShrink: 1, minWidth: 0 }}>
                     <Text style={s.pillTop}>CHAPTER</Text>
                     <Text style={s.pillMain} numberOfLines={1} ellipsizeMode="tail">
-                      {chapter}
+                      {chapterDisplay /* '-' until chosen; then "n / total" */}
                     </Text>
                   </View>
                   <Text style={s.chev}>▾</Text>
@@ -290,10 +346,7 @@ export default function SummariesScreen() {
                       <Pressable
                         key={subj}
                         style={s.ddRow}
-                        onPress={() => {
-                          setSubject(subj);
-                          setShowSubjectDrop(false);
-                        }}
+                        onPress={() => onSelectSubject(subj)}
                       >
                         <Text style={s.ddRowText}>{subj}</Text>
                       </Pressable>
@@ -306,7 +359,7 @@ export default function SummariesScreen() {
               </View>
             </Modal>
 
-            {/* Chapter modal (numeric only) */}
+            {/* Chapter modal (numeric only, driven by chaptersTotal) */}
             <Modal
               transparent
               visible={showChapterDrop}
@@ -317,14 +370,11 @@ export default function SummariesScreen() {
                 <View style={s.ddSheet}>
                   <Text style={s.ddTitle}>Select Chapter</Text>
                   <ScrollView style={{ maxHeight: 340 }}>
-                    {['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'].map((n) => (
+                    {(chapterOptions.length ? chapterOptions : ['1','2','3','4','5','6','7','8','9','10']).map((n) => (
                       <Pressable
                         key={n}
                         style={s.ddRow}
-                        onPress={() => {
-                          setChapter(n);
-                          setShowChapterDrop(false);
-                        }}
+                        onPress={() => onSelectChapter(n)}
                       >
                         <Text style={s.ddRowText}>{n}</Text>
                       </Pressable>
@@ -355,7 +405,8 @@ export default function SummariesScreen() {
               >
                 {/* Topic bar at top of the scroll box */}
                 <View style={s.topicBar}>
-                  <Text style={s.topicText}>ALGEBRA – SIMPLIFYING EXPRESSIONS</Text>
+                  {/* dynamic label */}
+                  <Text style={s.topicText}>{topicBarText}</Text>
                 </View>
 
                 <View style={s.contentRow}>
@@ -499,20 +550,20 @@ const s = StyleSheet.create({
   },
 
   subjectPill: {
-  flexGrow: 0,
-  width: 155,
-  height: 55,
-  alignSelf: 'flex-end',
-  justifyContent: 'center',
-  overflow: 'hidden',
-  paddingVertical: 10,
-},
+    flexGrow: 0,
+    width: 155,
+    height: 55,
+    alignSelf: 'flex-end',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    paddingVertical: 10,
+  },
 
-subjectTextWrap: {
-  flexShrink: 1,
-  minWidth: 0,
-  alignSelf: 'stretch'
-},
+  subjectTextWrap: {
+    flexShrink: 1,
+    minWidth: 0,
+    alignSelf: 'stretch'
+  },
 
   chapterPill: {
     flexGrow: 0,
@@ -616,7 +667,7 @@ subjectTextWrap: {
 
   topicBar: {
     backgroundColor: '#6B7280',
-    borderRadius: 22,
+    borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignSelf: 'stretch',

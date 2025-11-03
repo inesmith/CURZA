@@ -25,12 +25,12 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   where,
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase';
 
 import { useNotice } from '../contexts/NoticeProvider';
-import { ensureProgressDoc } from '../utils/progress';
 
 // (AI suggestions)
 import {
@@ -234,7 +234,21 @@ export default function DashboardScreen() {
         );
 
         // progress: ensure + listen
-        await ensureProgressDoc(user.uid);
+        try {
+          const pRefEnsure = doc(db, 'users', user.uid, 'progress', 'default');
+          const pSnapEnsure = await getDoc(pRefEnsure);
+          if (!pSnapEnsure.exists()) {
+            await setDoc(pRefEnsure, {
+              summariesStudied: 0,
+              chaptersCovered: 0,
+              testsCompleted: 0,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } catch (errEnsure) {
+          // ignore ensure errors but continue to set up listener
+          console.log('Could not ensure progress doc:', errEnsure);
+        }
         const pRef = doc(db, 'users', user.uid, 'progress', 'default');
         unsubProgress = onSnapshot(
           pRef,

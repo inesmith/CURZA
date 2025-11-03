@@ -18,7 +18,8 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { incWithContext, type ProgressKey } from './progress';
+// local fallback type for progress keys (remove dependency on ./progress)
+type ProgressKey = 'summariesStudied' | 'chaptersCovered' | 'testsCompleted' | string;
 
 export type SuggestedTodo = {
   id?: string;
@@ -96,12 +97,19 @@ export async function applySuggestedTodo(uid: string, suggestionId: string) {
   });
 
   // 2) increment progress on curriculum-aware doc (fallback to default if missing context)
-  if (data.curriculum && data.grade != null && data.subject) {
-    await incWithContext(data.curriculum, data.grade, data.subject, data.progressType, 1);
-  }
-
-  // 3) remove suggestion
-  await deleteDoc(sRef).catch(() => {});
+    if (data.curriculum && data.grade != null && data.subject) {
+      try {
+        const mod = await import('./progress');
+        if (typeof mod.incWithContext === 'function') {
+          await mod.incWithContext(data.curriculum, data.grade, data.subject, data.progressType, 1);
+        }
+      } catch {
+        // progress helper unavailable — ignore
+      }
+    }
+  
+    // 3) remove suggestion
+    await deleteDoc(sRef).catch(() => {});
 }
 
 /** Delete without applying */

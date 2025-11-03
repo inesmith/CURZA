@@ -1,6 +1,9 @@
 import * as functions from "firebase-functions/v2/https";
 import { openai, MODEL } from "./openai";
 import { Quiz, Answers, Scored } from "./schemas";
+// functions/src/index.ts
+export { chaptersMeta } from "./chaptersMeta";
+
 
 // Helper to call Structured Outputs
 async function structuredJSON<T>(schema: object, prompt: string): Promise<T> {
