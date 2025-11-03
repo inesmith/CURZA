@@ -179,22 +179,33 @@ export default function SummariesScreen() {
     }
   };
 
-  // Select chapter → mark studied + fetch topics
+  // Select chapter → fetch topics (and then count summary)
   const onSelectChapter = async (n: string) => {
     setChapter(n);
     setShowChapterDrop(false);
     setTopics([]); // reset while loading
-    try {
-      await incSummariesStudied();
-    } catch (e) {
-      console.log('incSummariesStudied (on chapter select) failed:', e);
-    }
+
     try {
       const chapNum = String(n);
-      const chapName =
+
+      // Try get chapterName from cached names
+      let chapName =
         chapterNames[chapNum] ??
         chapterNames[Number(chapNum) as any] ??
         '';
+
+      // If missing, re-fetch meta once to hydrate names (avoids generic "Intro concepts")
+      if (!chapName) {
+        try {
+          const meta2 = await getChaptersMeta({ curriculum, grade, subject: subject || '' });
+          const names2 = (meta2?.names || {}) as Record<string | number, string>;
+          setChapterNames(names2);
+          chapName = names2[chapNum] ?? names2[Number(chapNum) as any] ?? '';
+        } catch (err) {
+          console.log('Re-fetch chapter names failed:', err);
+        }
+      }
+
       const t = await getTopicsForChapter({
         curriculum,
         grade,
@@ -202,7 +213,24 @@ export default function SummariesScreen() {
         chapter: chapNum,
         chapterName: chapName,
       });
-      setTopics(t || []);
+
+      // Normalize to ensure each topic has a `.title`
+      const norm = (Array.isArray(t) ? t : []).map((x: any, i: number) => {
+        const title =
+          typeof x === 'string'
+            ? x
+            : x?.title ?? x?.name ?? x?.topic ?? x?.heading ?? `Topic ${i + 1}`;
+        return { ...x, title };
+      });
+
+      setTopics(norm);
+
+      // Increment only after a successful topics load (prevents “stuck at 1”)
+      try {
+        await incSummariesStudied();
+      } catch (e) {
+        console.log('incSummariesStudied after topics failed:', e);
+      }
     } catch (e) {
       console.log('getTopicsForChapter failed:', e);
       setTopics([]);
@@ -225,7 +253,7 @@ export default function SummariesScreen() {
   const topicBarText =
     subject && chapter !== '-'
       ? `${subject.toUpperCase()} – CHAPTER ${chapter}${currentChapterName ? ` – ${currentChapterName}` : ''}`
-      : 'Select Your Subject & Chapter';
+      : 'SELECT YOUR SUBJECT & CHAPTER TO BEGIN';
 
   return (
     <View style={s.page}>
@@ -442,19 +470,17 @@ export default function SummariesScreen() {
                       try { await incChaptersCovered(); } catch (e) { console.log(e); }
                     }}
                   >
-                    <Text style={s.yellowBtnText}>Mark Revised</Text>
+                    <Text style={s.yellowBtnText}>Mark Chapter as Revised</Text>
                   </Pressable>
                 </View>
 
-                {/* 🔵 Blue content bar placeholder removed — now we render per-topic sections */}
-
                 {/* Render Topic 1..N */}
                 {topics.map((t, idx) => (
-                  <View key={`${idx}-${t.title}`} style={{ marginTop: 0 }}>
+                  <View key={`${idx}-${(t as any)?.title}`} style={{ marginTop: 0 }}>
                     {/* Blue bar per topic */}
                     <View style={s.blueBar}>
                       <Text style={s.blueBarText}>
-                        {`Topic ${idx + 1}: ${t.title}`}
+                        {`Topic ${idx + 1}: ${(t as any)?.title}`}
                       </Text>
                     </View>
 
@@ -462,22 +488,22 @@ export default function SummariesScreen() {
                       <View style={s.leftCol}>
                         <KeyConceptsCard
                           title="KEY CONCEPTS"
-                          concepts={Array.isArray(t.keyConcepts) ? t.keyConcepts : []}
+                          concepts={Array.isArray((t as any)?.keyConcepts) ? (t as any).keyConcepts : []}
                         />
                         <ExampleSection
                           exampleTitle="EXAMPLE"
-                          exampleSteps={Array.isArray(t.exampleSteps) ? t.exampleSteps : []}
+                          exampleSteps={Array.isArray((t as any)?.exampleSteps) ? (t as any).exampleSteps : []}
                         />
                       </View>
 
                       <View style={s.rightCol}>
                         <FormulasCard
                           title="FORMULAS"
-                          formulas={Array.isArray(t.formulas) ? t.formulas : []}
+                          formulas={Array.isArray((t as any)?.formulas) ? (t as any).formulas : []}
                         />
                         <TipBoxCard
                           title="TIP BOX"
-                          tips={Array.isArray(t.tips) ? t.tips : []}
+                          tips={Array.isArray((t as any)?.tips) ? (t as any).tips : []}
                         />
                       </View>
                     </View>
