@@ -8,12 +8,44 @@ import {
   ScrollView,
   Image,
   ImageBackground,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
+import { scoreTestAI, db } from '../../firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+
+// inline pad
+import InlineWorkingPad from '../components/InlineWorkingPad';
 
 type Nav = StackNavigationProp<RootStackParamList>;
+
+type Part = {
+  label?: string;         // e.g. "(a)"
+  text?: string;          // sub-question text
+  marks?: number;         // marks for this part
+  type?: string;          // 'short' | 'calc' | 'mcq' etc (optional, for future)
+  options?: { id: string; text: string }[]; // optional MCQ choices
+};
+
+type Block =
+  | {
+      type: 'section';
+      title?: string;
+      instructions?: string;
+      marks?: number | null;
+    }
+  | {
+      type: 'question';
+      number?: string | number;
+      prompt?: string;
+      marks?: number;
+      parts?: Part[];
+      resources?: any;
+    }
+  | Record<string, any>;
 
 type Params = {
   mode: 'section' | 'full';
@@ -22,6 +54,7 @@ type Params = {
   totalMarks: number;     // from AI
   timed?: boolean;        // if true -> countdown
   durationSec?: number;   // required when timed=true
+  blocks?: Block[];       // AI-generated blocks
 };
 
 const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
@@ -41,14 +74,23 @@ export default function TestRunnerScreen() {
     totalMarks = 0,
     timed = false,
     durationSec = 0,
+    blocks = [],
   } = (route.params || {}) as Params;
 
   // Timer
   const [paused, setPaused] = useState(false);
   const [ended, setEnded] = useState(false);
-  // If timed: start from durationSec and count down; else: start from 0 and count up
   const [seconds, setSeconds] = useState<number>(timed ? Math.max(0, durationSec) : 0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // local typed answers
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  // handwritten artifacts (PNG data URLs). We send to scorer, but only save metadata to Firestore.
+  const [workArtifacts, setWorkArtifacts] = useState<Record<string, { uri?: string; mime?: string }>>({});
+  // which pads are open inline
+  const [openPads, setOpenPads] = useState<Record<string, boolean>>({});
+
+  const [submitting, setSubmitting] = useState(false);
 
   // Start/stop the ticking based on paused/ended
   useEffect(() => {
@@ -63,13 +105,11 @@ export default function TestRunnerScreen() {
       setSeconds((prev) => {
         if (timed) {
           if (prev <= 1) {
-            // time up — lock test
             setEnded(true);
             return 0;
           }
           return prev - 1;
         }
-        // stopwatch mode
         return prev + 1;
       });
     }, 1000);
@@ -87,36 +127,282 @@ export default function TestRunnerScreen() {
     setPaused((p) => !p);
   };
 
-  // Grey content “test body” 
+  // Small “answer area” box to mimic exam paper lines/space
+  const AnswerBox = ({ lines = 3 }: { lines?: number }) => (
+    <View style={[styles.answerBox, { height: 16 * lines + 20 }]} />
+  );
+
+  // keys for answers/artifacts
+  const qKey = (qIndex: number, qNumber?: string | number) => `q-${qNumber ?? qIndex + 1}`;
+  const qpKey = (qIndex: number, pIndex?: number, qNumber?: string | number) =>
+    pIndex != null ? `${qKey(qIndex, qNumber)}-p-${pIndex + 1}` : `${qKey(qIndex, qNumber)}-whole`;
+
+  // Toggle button
+  const WorkingBtn = ({ targetKey }: { targetKey: string }) => {
+    const hasImg = !!workArtifacts[targetKey]?.uri;
+    const open = !!openPads[targetKey];
+    return (
+      <View style={styles.workRow}>
+        <Pressable
+          onPress={() => setOpenPads((prev) => ({ ...prev, [targetKey]: !prev[targetKey] }))}
+          style={[styles.workBtn, open ? styles.workBtnOn : styles.workBtnOff]}
+          hitSlop={8}
+        >
+          <Text style={[styles.workBtnText, open ? styles.workBtnTextOn : styles.workBtnTextOff]}>
+            {open ? 'Hide working' : hasImg ? 'Edit working' : 'Write working'}
+          </Text>
+        </Pressable>
+        {hasImg ? <Text style={styles.workBadge}>1 attachment</Text> : null}
+      </View>
+    );
+  };
+
+  // 🔒 SCROLL LOCK: if any pad is open, disable ScrollView scrolling
+  const anyPadOpen = Object.values(openPads).some(Boolean);
+
+  // Plain renderer
   const Content = (
     <View style={styles.paperInner}>
-      {/* Example question header bar */}
-      <View style={styles.questionHeader}>
-        <Text style={styles.qTitle}>QUESTION 1</Text>
-        <Text style={styles.qMarks}>20 MARKS</Text>
-      </View>
+      {Array.isArray(blocks) && blocks.length > 0 ? (
+        blocks.map((b: Block, i: number) => {
+          if ((b as any)?.type === 'section') {
+            const sec = b as Extract<Block, { type: 'section' }>;
+            return (
+              <View key={`sec-${i}`} style={{ marginBottom: 12 }}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>
+                    {String(sec.title ?? 'SECTION').toUpperCase()}
+                  </Text>
+                </View>
+                {sec.instructions ? (
+                  <View style={styles.sectionBody}>
+                    <Text style={styles.sectionText}>{sec.instructions}</Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          }
 
-      {/* Placeholder body; swap with your actual test blocks */}
-      <View style={styles.placeholderBlock}>
-        <Text style={styles.placeholderText}>
-          Your generated test content goes here. Render questions, inputs, and diagrams inside this
-          scroll area.
-        </Text>
-      </View>
+          if ((b as any)?.type === 'question') {
+            const q = b as Extract<Block, { type: 'question' }>;
+            return (
+              <View key={`q-${q.number ?? i}`} style={{ marginBottom: 12 }}>
+                <View style={styles.questionHeader}>
+                  <Text style={styles.qTitle}>
+                    QUESTION {String(q.number ?? i + 1)}
+                  </Text>
+                  <Text style={styles.qMarks}>
+                    {(q.marks ?? 0)} MARKS
+                  </Text>
+                </View>
+
+                <View style={styles.promptBlock}>
+                  {q.prompt ? (
+                    <Text style={styles.promptText}>{q.prompt}</Text>
+                  ) : null}
+                </View>
+
+                {Array.isArray(q.parts) && q.parts.length > 0 ? (
+                  <View style={{ marginTop: 6 }}>
+                    {q.parts.map((p: Part, j: number) => {
+                      const key = qpKey(i, j, q.number);
+                      const label = p.label ?? `(${String.fromCharCode(97 + j)})`;
+                      const isMCQ = Array.isArray(p.options) && p.options.length > 0;
+                      const open = !!openPads[key];
+
+                      return (
+                        <View key={`q-${i}-p-${j}`} style={styles.partBlock}>
+                          <View style={styles.partHeader}>
+                            <Text style={styles.partLabel}>{label}</Text>
+                            {typeof p.marks === 'number' ? (
+                              <Text style={styles.partMarks}>{p.marks} marks</Text>
+                            ) : null}
+                          </View>
+
+                          {p.text ? <Text style={styles.partText}>{p.text}</Text> : null}
+
+                          <AnswerBox lines={p.type === 'short' ? 2 : 4} />
+
+                          {isMCQ ? (
+                            <View style={styles.optRow}>
+                              {p.options!.map((opt) => (
+                                <Pressable
+                                  key={opt.id}
+                                  onPress={() => setAnswers((prev) => ({ ...prev, [key]: opt.id }))}
+                                  style={[
+                                    styles.optChip,
+                                    answers[key] === opt.id ? styles.optChipOn : styles.optChipOff,
+                                  ]}
+                                  hitSlop={6}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.optChipText,
+                                      answers[key] === opt.id ? styles.optChipTextOn : styles.optChipTextOff,
+                                    ]}
+                                  >
+                                    {opt.text ?? opt.id}
+                                  </Text>
+                                </Pressable>
+                              ))}
+                            </View>
+                          ) : (
+                            <TextInput
+                              placeholder="Type your answer…  (or add handwritten working)"
+                              placeholderTextColor="rgba(229,231,235,0.7)"
+                              value={answers[key] ?? ''}
+                              onChangeText={(t) => setAnswers((prev) => ({ ...prev, [key]: t }))}
+                              style={styles.input}
+                              multiline
+                            />
+                          )}
+
+                          <WorkingBtn targetKey={key} />
+
+                          {open ? (
+                            <InlineWorkingPad
+                              value={workArtifacts[key]?.uri}
+                              onChange={(dataUrl: any) =>
+                                setWorkArtifacts((prev) => ({
+                                  ...prev,
+                                  [key]: { uri: dataUrl, mime: 'image/png' },
+                                }))
+                              }
+                              height={220}
+                            />
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={{ marginTop: 6 }}>
+                    <AnswerBox lines={6} />
+                    <TextInput
+                      placeholder="Type your answer…  (or add handwritten working)"
+                      placeholderTextColor="rgba(229,231,235,0.7)"
+                      value={answers[qpKey(i, undefined, q.number)] ?? ''}
+                      onChangeText={(t) =>
+                        setAnswers((prev) => ({
+                          ...prev,
+                          [qpKey(i, undefined, q.number)]: t,
+                        }))
+                      }
+                      style={styles.input}
+                      multiline
+                    />
+
+                    <WorkingBtn targetKey={qpKey(i, undefined, q.number)} />
+                    {openPads[qpKey(i, undefined, q.number)] ? (
+                      <InlineWorkingPad
+                        value={workArtifacts[qpKey(i, undefined, q.number)]?.uri}
+                        onChange={(dataUrl: any) =>
+                          setWorkArtifacts((prev) => ({
+                            ...prev,
+                            [qpKey(i, undefined, q.number)]: { uri: dataUrl, mime: 'image/png' },
+                          }))
+                        }
+                        height={220}
+                      />
+                    ) : null}
+                  </View>
+                )}
+              </View>
+            );
+          }
+
+          return (
+            <View key={`x-${i}`} style={{ marginBottom: 12 }}>
+              <View style={styles.placeholderBlock}>
+                <Text style={styles.placeholderText}>{JSON.stringify(b)}</Text>
+              </View>
+            </View>
+          );
+        })
+      ) : (
+        <View style={styles.placeholderBlock}>
+          <Text style={styles.placeholderText}>
+            Your generated test content goes here. Render questions, inputs, and diagrams inside this
+            scroll area.
+          </Text>
+        </View>
+      )}
     </View>
   );
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    try {
+      setSubmitting(true);
+
+      const items = Object.entries(answers).map(([id, value]) => ({
+        qid: id,
+        id: typeof value === 'string' ? value : String(value),
+        text: typeof value === 'string' ? value : undefined,
+      }));
+
+      const working = Object.entries(workArtifacts).map(([id, v]) => ({
+        qid: id,
+        uri: v?.uri,
+        mime: v?.mime ?? 'image/png',
+      }));
+
+      const res = await scoreTestAI({
+        questions: blocks,
+        answers: { items },
+        working,
+        rubric: { stepwise: true, methodMarks: true },
+        meta: { title, subject: (route.params as Params)?.subject, totalMarks, timed, durationSec },
+      });
+
+      const result = res.data as any;
+
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (user) {
+        const attemptId = Date.now().toString();
+        const workingMeta = Object.keys(workArtifacts).map((qid) => ({
+          qid,
+          hasImage: true,
+        }));
+
+        await setDoc(
+          doc(db, 'users', user.uid, 'attempts', attemptId),
+          {
+            mode: (route.params as Params)?.mode ?? 'full',
+            title,
+            subject: (route.params as Params)?.subject,
+            totalMarks,
+            timed: !!timed,
+            durationSec: durationSec ?? null,
+            answers,
+            workingMeta,
+            result,
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      navigation.navigate('ResultDetail', { result });
+    } catch (err) {
+      console.log('scoreTest error:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <View style={styles.page}>
       <View style={styles.imageWrapper}>
-        {/* Left rail artwork (same stack visuals you’ve used elsewhere) */}
+        {/* Left rail artwork (same stack visuals) */}
         <Image source={require('../../assets/DashboardTab.png')} style={styles.tab} resizeMode="contain" />
         <Image source={require('../../assets/SummariesTab.png')} style={styles.tab} resizeMode="contain" />
         <Image source={require('../../assets/PractiseTab.png')} style={styles.tab} resizeMode="contain" />
         <Image source={require('../../assets/ResultsTab.png')} style={styles.tab} resizeMode="contain" />
         <Image source={require('../../assets/ProfileTab.png')} style={styles.tab} resizeMode="contain" />
 
-        {/* Clickable text labels (add the rest of the tabs) */}
+        {/* Clickable text labels */}
         <View style={[styles.tabTextWrapper, styles.posSummaries]}>
           <Pressable onPress={() => navigation.navigate('Summaries' as never)} hitSlop={12}>
             <Text style={[styles.tabText, styles.summariesTab]}>SUMMARIES</Text>
@@ -151,14 +437,14 @@ export default function TestRunnerScreen() {
           imageStyle={styles.cardImage}
           resizeMode="cover"
         >
-          {/* DASHBOARD link (like other screens) */}
+          {/* DASHBOARD link */}
           <View style={[styles.tabTextWrapper, styles.posDashboard]}>
             <Pressable onPress={() => navigation.navigate('Dashboard' as never)} hitSlop={12}>
               <Text style={[styles.tabText, styles.dashboardTab]}>DASHBOARD</Text>
             </Pressable>
           </View>
 
-          {/* Header (no swoosh / dot) */}
+          {/* Header */}
           <View style={styles.cardInner}>
             <Text style={styles.heading}>
               {String(title || 'TEST')}
@@ -183,10 +469,9 @@ export default function TestRunnerScreen() {
             <View style={styles.bigBlock}>
               <ScrollView
                 style={styles.bigBlockScroll}
-                contentContainerStyle={{ padding: 16 }}
+                contentContainerStyle={{ padding: 16, paddingBottom: 90 }}
                 showsVerticalScrollIndicator
-                scrollEnabled={!paused && !ended}
-                // Disable touches inside while paused/ended
+                scrollEnabled={!paused && !ended && !anyPadOpen}
                 pointerEvents={paused || ended ? 'none' : 'auto'}
               >
                 {Content}
@@ -197,6 +482,17 @@ export default function TestRunnerScreen() {
                   <Text style={styles.overlayText}>{ended ? 'TIME UP' : 'PAUSED'}</Text>
                 </View>
               )}
+
+              {/* Sticky submit bar */}
+              <View style={styles.submitBar}>
+                <Pressable
+                  onPress={handleSubmit}
+                  disabled={submitting}
+                  style={[styles.submitBtn, submitting ? styles.submitBtnDisabled : styles.submitBtnEnabled]}
+                >
+                  <Text style={styles.submitText}>{submitting ? 'Submitting…' : 'Submit Test'}</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </ImageBackground>
@@ -258,7 +554,6 @@ const styles = StyleSheet.create({
   cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
   cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
-
   heading: {
     fontFamily: 'Antonio_700Bold',
     color: 'white',
@@ -280,7 +575,7 @@ const styles = StyleSheet.create({
   },
   pill: {
     backgroundColor: '#2763F6',
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 10,
     paddingHorizontal: 16,
     minWidth: 110,
@@ -301,8 +596,8 @@ const styles = StyleSheet.create({
 
   bigBlock: {
     backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 18,
-    height: 620,
+    borderRadius: 16,
+    height: 590,
     overflow: 'hidden',
     position: 'relative',
     shadowColor: '#000',
@@ -313,20 +608,43 @@ const styles = StyleSheet.create({
   },
   bigBlockScroll: { flex: 1 },
 
-  // Example paper content
+  // Paper content wrapper
   paperInner: {
     backgroundColor: 'rgba(17,24,39,0.25)',
     borderRadius: 16,
     padding: 12,
   },
+
+  // SECTION
+  sectionHeader: {
+    backgroundColor: '#2763F6',
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginBottom: 6,
+    shadowColor: '#0B1220',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  sectionTitle: { color: '#FFFFFF', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.5 },
+  sectionBody: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: 10,
+  },
+  sectionText: { color: '#F3F4F6', fontFamily: 'AlumniSans_500Medium', fontSize: 15 },
+
+  // QUESTION
   questionHeader: {
     backgroundColor: '#FACC15',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingVertical: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
     shadowColor: '#0B1220',
     shadowOpacity: 0.25,
     shadowRadius: 6,
@@ -335,9 +653,93 @@ const styles = StyleSheet.create({
   },
   qTitle: { color: '#1F2937', fontFamily: 'Antonio_700Bold', fontSize: 16, letterSpacing: 0.4 },
   qMarks: { color: '#1F2937', fontFamily: 'Antonio_700Bold', fontSize: 14, letterSpacing: 0.4 },
+
+  // prompt text area (question stem)
+  promptBlock: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: 12,
+  },
+  promptText: {
+    color: '#F3F4F6',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 16,
+  },
+
+  // PARTS
+  partBlock: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+  },
+  partHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  partLabel: {
+    color: '#FFFFFF',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 15,
+    letterSpacing: 0.4,
+  },
+  partMarks: {
+    color: '#E5E7EB',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 14,
+  },
+  partText: {
+    color: '#F3F4F6',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 15,
+    marginBottom: 6,
+  },
+
+  // Simple “answer lines” box
+  answerBox: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+
+  // Input (text)
+  input: {
+    marginTop: 4,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    padding: 10,
+    color: '#FFFFFF',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 15,
+  },
+
+  // MCQ chips
+  optRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  optChip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1 },
+  optChipOff: { borderColor: 'rgba(255,255,255,0.35)', backgroundColor: 'rgba(255,255,255,0.03)' },
+  optChipOn: { borderColor: '#FACC15', backgroundColor: 'rgba(250,204,21,0.18)' },
+  optChipText: { fontFamily: 'Antonio_700Bold', fontSize: 14, letterSpacing: 0.3 },
+  optChipTextOff: { color: '#E5E7EB' },
+  optChipTextOn: { color: '#FACC15' },
+
+  // Working (handwriting) button
+  workRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  workBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1 },
+  workBtnOff: { borderColor: 'rgba(255,255,255,0.35)', backgroundColor: 'rgba(255,255,255,0.03)' },
+  workBtnOn: { borderColor: '#2763F6', backgroundColor: 'rgba(39,99,246,0.18)' },
+  workBtnText: { fontFamily: 'Antonio_700Bold', fontSize: 14, letterSpacing: 0.3 },
+  workBtnTextOff: { color: '#E5E7EB' },
+  workBtnTextOn: { color: '#2763F6' },
+  workBadge: { color: '#9CA3AF', fontFamily: 'AlumniSans_500Medium' },
+
+  // Fallback/plain text block
   placeholderBlock: {
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
   },
   placeholderText: { color: '#F3F4F6', fontFamily: 'AlumniSans_500Medium', fontSize: 16 },
@@ -353,5 +755,35 @@ const styles = StyleSheet.create({
     fontFamily: 'Antonio_700Bold',
     fontSize: 22,
     letterSpacing: 1,
+  },
+
+  // Sticky submit bar
+  submitBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 12,
+    backgroundColor: 'rgba(11,18,32,0.75)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  submitBtn: {
+    height: 50,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  submitBtnEnabled: { backgroundColor: '#FACC15' },
+  submitBtnDisabled: { backgroundColor: '#9CA3AF' },
+  submitText: {
+    color: '#1F2937',
+    fontFamily: 'Antonio_700Bold',
+    fontSize: 16,
+    letterSpacing: 0.3,
   },
 });

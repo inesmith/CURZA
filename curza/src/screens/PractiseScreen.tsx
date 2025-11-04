@@ -1,6 +1,5 @@
-// src/screens/PractiseScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal, } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
@@ -24,6 +23,16 @@ const TOPICS = [
 ];
 const QUESTION_COUNTS = [5, 10, 15, 20, 25, 30];
 const PAPERS = ['Paper 1', 'Paper 2', 'Paper 3'];
+
+type BuildTestResponse = {
+  message?: string;
+  title?: string;
+  subject?: string;
+  totalMarks?: number;
+  timed?: boolean;
+  durationSec?: number;
+  blocks?: any[];
+};
 
 export default function PractiseScreen() {
   const [centre, setCentre] = useState(false);
@@ -95,80 +104,67 @@ export default function PractiseScreen() {
     return () => unsub();
   }, []);
 
-  // Full test (example)
-  const handleFullTest = async () => {
+  // Full test -> call AI, then navigate with payload blocks
+  const onStartFull = async (params: import('../components/FullExamPanel').FullExamParams) => {
     try {
       const res = await createTestAI({
-        subject,
-        grade,
+        subject: params.subject,
+        grade: params.grade,
         mode: 'full',
-        examType: 'Paper 1',
+        examType: params.examType,
+        timed: params.timed,
       });
-      console.log('createTestAI(full) ->', res.data);
+      const payload = (res?.data ?? {}) as BuildTestResponse;
+
+      navigation.navigate('TestRunner', {
+        mode: 'full',
+        title: payload.title ?? `${params.subject} ${params.examType}`,
+        subject: params.subject,
+        totalMarks: payload.totalMarks ?? 150,
+        timed: typeof payload.timed === 'boolean' ? payload.timed : !!params.timed,
+        durationSec:
+          typeof payload.durationSec === 'number'
+            ? payload.durationSec
+            : params.timed
+              ? (params.durationSec ?? 3 * 60 * 60)
+              : undefined,
+        blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
+      } as any);
     } catch (err) {
       console.log('createTestAI(full) error:', err);
     }
   };
 
-  // Section test (example)
-  const handleSectionTest = async () => {
+  // Section test -> call AI, then navigate with payload blocks
+  const onStartSection = async (params: import('../components/SectionTestPanel').SectionTestParams) => {
     try {
       const res = await createTestAI({
-        subject,
-        grade,
+        subject: params.subject,
+        grade: params.grade,
         mode: 'section',
-        topic: 'Mechanics: Work, Energy and Power',
+        topic: params.topic,
+        count: params.count,
+        timed: params.timed,
       });
-      console.log('createTestAI(section) ->', res.data);
+      const payload = (res?.data ?? {}) as BuildTestResponse;
+
+      navigation.navigate('TestRunner', {
+        mode: 'section',
+        title: payload.title ?? (params.topic ?? 'Section'),
+        subject: params.subject,
+        totalMarks: payload.totalMarks ?? ((params.count ?? 10) * 5),
+        timed: typeof payload.timed === 'boolean' ? payload.timed : !!params.timed,
+        durationSec:
+          typeof payload.durationSec === 'number'
+            ? payload.durationSec
+            : params.timed
+              ? (params.durationSec ?? (params.count ?? 10) * 120)
+              : undefined,
+        blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
+      } as any);
     } catch (err) {
       console.log('createTestAI(section) error:', err);
     }
-  };
-
-  // Navigate to TestRunner after starting — now using values returned by AI
-  const onStartSection = async (params: import('../components/SectionTestPanel').SectionTestParams) => {
-    const res = await createTestAI({
-      subject: params.subject,
-      grade: params.grade,
-      mode: 'section',
-      topic: params.topic,
-      count: params.count,
-      timed: params.timed,
-    });
-    const { title, totalMarks, timed, durationSec } = (res.data ?? {}) as any;
-
-    navigation.navigate('TestRunner', {
-      mode: 'section',
-      title: title ?? (params.topic ?? 'Section'),
-      subject: params.subject,
-      totalMarks: totalMarks ?? ((params.count ?? 10) * 5),
-      timed: timed ?? !!params.timed,
-      durationSec: (timed ?? !!params.timed)
-        ? (durationSec ?? (params.durationSec ?? (params.count ?? 10) * 120))
-        : undefined,
-    });
-  };
-
-  const onStartFull = async (params: import('../components/FullExamPanel').FullExamParams) => {
-    const res = await createTestAI({
-      subject: params.subject,
-      grade: params.grade,
-      mode: 'full',
-      examType: params.examType,
-      timed: params.timed,
-    });
-    const { title, totalMarks, timed, durationSec } = (res.data ?? {}) as any;
-
-    navigation.navigate('TestRunner', {
-      mode: 'full',
-      title: title ?? `${params.subject} ${params.examType}`,
-      subject: params.subject,
-      totalMarks: totalMarks ?? 150,
-      timed: timed ?? !!params.timed,
-      durationSec: (timed ?? !!params.timed)
-        ? (durationSec ?? (params.durationSec ?? 3 * 60 * 60))
-        : undefined,
-    });
   };
 
   return (
@@ -206,8 +202,6 @@ export default function PractiseScreen() {
         <View style={[s.tabTextWrapper, s.posPractice]}>
           <Pressable
             onPress={() => navigation.navigate('PracticeTests')}
-            onLongPress={handleFullTest}
-            delayLongPress={300}
             hitSlop={12}
           >
             <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
@@ -217,8 +211,6 @@ export default function PractiseScreen() {
         <View style={[s.tabTextWrapper, s.posResults]}>
           <Pressable
             onPress={() => navigation.navigate('Results')}
-            onLongPress={handleSectionTest}
-            delayLongPress={300}
             hitSlop={12}
           >
             <Text style={[s.tabText, s.resultsTab]}>RESULTS</Text>
@@ -391,27 +383,12 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     position: 'relative',
   },
-  tabTextWrapper: { 
-    position: 'absolute', 
-    left: '4.5%', 
-    alignItems: 'center', 
-    zIndex: 5 
-  },
-  posActive: { 
-    top: '15%' 
-  },
-  posSummaries: { 
-    top: '22%' 
-  },
-  posPractice: { 
-    top: '30%' 
-  },
-  posResults: { 
-    top: '39%' 
-  },
-  posProfile: { 
-    top: '48%' 
-  },
+  tabTextWrapper: { position: 'absolute', left: '4.5%', alignItems: 'center', zIndex: 5 },
+  posActive: { top: '15%' },
+  posSummaries: { top: '22%' },
+  posPractice: { top: '30%' },
+  posResults: { top: '39%' },
+  posProfile: { top: '48%' },
 
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
@@ -424,72 +401,22 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-  dashboardTab: { 
-    fontWeight: 'bold', 
-    marginTop: -115 
-  },
-  summariesTab: { 
-    opacity: 0.8, 
-    marginTop: -15 
-  },
-  practiseTab: { 
-    opacity: 0.8, 
-    marginTop: 20 
-  },
-  resultsTab: { 
-    opacity: 0.8, 
-    marginTop: 45 
-  },
-  profileTab: { 
-    opacity: 0.8, 
-    marginTop: 72 
-  },
-  practiseOpenTab: { 
-    opacity: 0.8, 
-    marginTop: 20 
-  },
+  dashboardTab: { fontWeight: 'bold', marginTop: -115 },
+  summariesTab: { opacity: 0.8, marginTop: -15 },
+  practiseTab: { opacity: 0.8, marginTop: 20 },
+  resultsTab: { opacity: 0.8, marginTop: 45 },
+  profileTab: { opacity: 0.8, marginTop: 72 },
+  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
 
-  logintab: { 
-    position: 'absolute', 
-    height: '100%', 
-    width: '100%', 
-    zIndex: 1 
-  },
+  logintab: { position: 'absolute', height: '100%', width: '100%', zIndex: 1 },
 
-  card: { 
-    flex: 1, 
-    borderRadius: 40, 
-    overflow: 'hidden', 
-    position: 'relative', 
-    zIndex: 1 
-  },
-  cardInner: { 
-    flex: 1, 
-    borderRadius: 40, 
-    padding: 28, 
-    marginLeft: 210, 
-    marginRight: 14 
-  },
-  cardImage: { 
-    borderRadius: 40, 
-    resizeMode: 'cover' 
-  },
+  card: { flex: 1, borderRadius: 40, overflow: 'hidden', position: 'relative', zIndex: 1 },
+  cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
+  cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
   // 🔵 Top-right info (unchanged)
-  topRightWrap: { 
-    position: 'absolute', 
-    top: 22, 
-    right: 26, 
-    zIndex: 7, 
-    width: 360 
-  },
-  row: { 
-    flexDirection: 'row', 
-    gap: 14, 
-    marginBottom: 14, 
-    justifyContent: 'flex-end', 
-    marginTop: 15 
-  },
+  topRightWrap: { position: 'absolute', top: 22, right: 26, zIndex: 7, width: 360 },
+  row: { flexDirection: 'row', gap: 14, marginBottom: 14, justifyContent: 'flex-end', marginTop: 15 },
   pill: {
     flexGrow: 1,
     backgroundColor: '#2763F6',
@@ -502,45 +429,12 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
-  curriculumPill: { 
-    flexGrow: 0, 
-    width: 135, 
-    height: 55, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
-  },
-  gradePill: { 
-    flexGrow: 0, 
-    width: 110, 
-    height: 55, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
-  },
-  subjectPill: { 
-    flexGrow: 0, 
-    width: 260, 
-    height: 55, 
-    alignSelf: 'flex-end', 
-    justifyContent: 'center' 
-  },
-  pillTop: { 
-    color: 'rgba(255,255,255,0.85)', 
-    fontFamily: 'AlumniSans_500Medium', 
-    fontSize: 12, 
-    letterSpacing: 1 
-  },
-  pillMain: { 
-    color: '#FFFFFF', 
-    fontFamily: 'Antonio_700Bold', 
-    fontSize: 18, 
-    letterSpacing: 0.3, 
-    marginTop: 2 
-  },
-  chev: { 
-    color: '#FFFFFF', 
-    fontSize: 18, 
-    marginLeft: 8 
-  },
+  curriculumPill: { flexGrow: 0, width: 135, height: 55, alignItems: 'center', justifyContent: 'center' },
+  gradePill: { flexGrow: 0, width: 110, height: 55, alignItems: 'center', justifyContent: 'center' },
+  subjectPill: { flexGrow: 0, width: 260, height: 55, alignSelf: 'flex-end', justifyContent: 'center' },
+  pillTop: { color: 'rgba(255,255,255,0.85)', fontFamily: 'AlumniSans_500Medium', fontSize: 12, letterSpacing: 1 },
+  pillMain: { color: '#FFFFFF', fontFamily: 'Antonio_700Bold', fontSize: 18, letterSpacing: 0.3, marginTop: 2 },
+  chev: { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
 
   // Modal dropdown
   ddBackdrop: {
@@ -557,30 +451,11 @@ const s = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
-  ddTitle: { 
-    fontSize: 16, 
-    fontWeight: '600', 
-    color: '#1F2937', 
-    marginBottom: 8 
-  },
-  ddRow: { 
-    paddingVertical: 12, 
-    paddingHorizontal: 8, 
-    borderRadius: 10 
-  },
-  ddRowText: { 
-    fontSize: 16, 
-    color: '#1F2937' 
-  },
-  ddCancel: { 
-    marginTop: 8, 
-    alignSelf: 'flex-end', 
-    padding: 8 
-  },
-  ddCancelText: { 
-    color: '#1F2937', 
-    textDecorationLine: 'underline' 
-  },
+  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
+  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
+  ddRowText: { fontSize: 16, color: '#1F2937' },
+  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
+  ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
 
   swoosh: {
     position: 'absolute',
@@ -592,14 +467,7 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 2,
   },
-  dot: { 
-    position: 'absolute', 
-    top: 10, 
-    left: 470, 
-    height: '5%', 
-    zIndex: 1, 
-    opacity: 0.95 
-  },
+  dot: { position: 'absolute', top: 10, left: 470, height: '5%', zIndex: 1, opacity: 0.95 },
   heading: {
     fontFamily: 'Antonio_700Bold',
     color: 'white',
@@ -646,9 +514,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  bigBlockScroll: { 
-    flex: 1 
-  },
+  bigBlockScroll: { flex: 1 },
 
   scrollBlockItem: {
     width: 220,

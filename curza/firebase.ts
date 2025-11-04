@@ -41,9 +41,9 @@ export const storage = getStorage(app);
 export const functions = getFunctions(app, 'us-central1');
 
 // Keep client API in “test” terms
-export const createTestAI = httpsCallable(functions, 'createTest'); // aliases to buildQuiz on server
 export const summariseAI  = httpsCallable(functions, 'summarise');
 export const scoreTestAI  = httpsCallable(functions, 'scoreTest');  // simple stub added on server
+export const createTestAI = httpsCallable(functions, 'buildTest');
 
 // functions/src/index.ts re-exports (server-side) live in the functions project only, not here.
 
