@@ -1,6 +1,6 @@
 // src/screens/PractiseScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal, } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
@@ -125,9 +125,9 @@ export default function PractiseScreen() {
     }
   };
 
-  // Navigate to TestRunner after starting 
+  // Navigate to TestRunner after starting — now using values returned by AI
   const onStartSection = async (params: import('../components/SectionTestPanel').SectionTestParams) => {
-    await createTestAI({
+    const res = await createTestAI({
       subject: params.subject,
       grade: params.grade,
       mode: 'section',
@@ -135,31 +135,39 @@ export default function PractiseScreen() {
       count: params.count,
       timed: params.timed,
     });
+    const { title, totalMarks, timed, durationSec } = (res.data ?? {}) as any;
+
     navigation.navigate('TestRunner', {
       mode: 'section',
-      title: params.topic ?? 'Section',
+      title: title ?? (params.topic ?? 'Section'),
       subject: params.subject,
-      totalMarks: (params.count ?? 10) * 5, // fallback; replace with AI value if returned
-      timed: !!params.timed,
-      durationSec: params.timed ? (params.durationSec ?? (params.count ?? 10) * 120) : undefined,
+      totalMarks: totalMarks ?? ((params.count ?? 10) * 5),
+      timed: timed ?? !!params.timed,
+      durationSec: (timed ?? !!params.timed)
+        ? (durationSec ?? (params.durationSec ?? (params.count ?? 10) * 120))
+        : undefined,
     });
   };
 
   const onStartFull = async (params: import('../components/FullExamPanel').FullExamParams) => {
-    await createTestAI({
+    const res = await createTestAI({
       subject: params.subject,
       grade: params.grade,
       mode: 'full',
       examType: params.examType,
       timed: params.timed,
     });
+    const { title, totalMarks, timed, durationSec } = (res.data ?? {}) as any;
+
     navigation.navigate('TestRunner', {
       mode: 'full',
-      title: `${params.subject} ${params.examType}`,
+      title: title ?? `${params.subject} ${params.examType}`,
       subject: params.subject,
-      totalMarks: 150, // fallback; replace with AI value if returned
-      timed: !!params.timed,
-      durationSec: params.timed ? (params.durationSec ?? 3 * 60 * 60) : undefined,
+      totalMarks: totalMarks ?? 150,
+      timed: timed ?? !!params.timed,
+      durationSec: (timed ?? !!params.timed)
+        ? (durationSec ?? (params.durationSec ?? 3 * 60 * 60))
+        : undefined,
     });
   };
 
@@ -350,7 +358,7 @@ export default function PractiseScreen() {
                 {/* Info banner*/}
                 <View style={s.infoBanner}>
                   <Text style={s.infoText}>
-                    FULL EXAMS FOLLOW THE OFFICIAL CAPS STRUCTURE AND INCLUDE MULTIPLE SECTIONS.{'\n'}
+                    FULL EXAMS FOLLOW THE OFFICIAL {String(curriculum).toUpperCase()} STRUCTURE AND INCLUDE MULTIPLE SECTIONS.{'\n'}
                     AI WILL MARK STEP-BY-STEP AND PROVIDE FEEDBACK.
                   </Text>
                 </View>
@@ -383,12 +391,27 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     position: 'relative',
   },
-  tabTextWrapper: { position: 'absolute', left: '4.5%', alignItems: 'center', zIndex: 5 },
-  posActive: { top: '15%' },
-  posSummaries: { top: '22%' },
-  posPractice: { top: '30%' },
-  posResults: { top: '39%' },
-  posProfile: { top: '48%' },
+  tabTextWrapper: { 
+    position: 'absolute', 
+    left: '4.5%', 
+    alignItems: 'center', 
+    zIndex: 5 
+  },
+  posActive: { 
+    top: '15%' 
+  },
+  posSummaries: { 
+    top: '22%' 
+  },
+  posPractice: { 
+    top: '30%' 
+  },
+  posResults: { 
+    top: '39%' 
+  },
+  posProfile: { 
+    top: '48%' 
+  },
 
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
@@ -401,22 +424,72 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-  dashboardTab: { fontWeight: 'bold', marginTop: -115 },
-  summariesTab: { opacity: 0.8, marginTop: -15 },
-  practiseTab: { opacity: 0.8, marginTop: 20 },
-  resultsTab: { opacity: 0.8, marginTop: 45 },
-  profileTab: { opacity: 0.8, marginTop: 72 },
-  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
+  dashboardTab: { 
+    fontWeight: 'bold', 
+    marginTop: -115 
+  },
+  summariesTab: { 
+    opacity: 0.8, 
+    marginTop: -15 
+  },
+  practiseTab: { 
+    opacity: 0.8, 
+    marginTop: 20 
+  },
+  resultsTab: { 
+    opacity: 0.8, 
+    marginTop: 45 
+  },
+  profileTab: { 
+    opacity: 0.8, 
+    marginTop: 72 
+  },
+  practiseOpenTab: { 
+    opacity: 0.8, 
+    marginTop: 20 
+  },
 
-  logintab: { position: 'absolute', height: '100%', width: '100%', zIndex: 1 },
+  logintab: { 
+    position: 'absolute', 
+    height: '100%', 
+    width: '100%', 
+    zIndex: 1 
+  },
 
-  card: { flex: 1, borderRadius: 40, overflow: 'hidden', position: 'relative', zIndex: 1 },
-  cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
-  cardImage: { borderRadius: 40, resizeMode: 'cover' },
+  card: { 
+    flex: 1, 
+    borderRadius: 40, 
+    overflow: 'hidden', 
+    position: 'relative', 
+    zIndex: 1 
+  },
+  cardInner: { 
+    flex: 1, 
+    borderRadius: 40, 
+    padding: 28, 
+    marginLeft: 210, 
+    marginRight: 14 
+  },
+  cardImage: { 
+    borderRadius: 40, 
+    resizeMode: 'cover' 
+  },
 
   // 🔵 Top-right info (unchanged)
-  topRightWrap: { position: 'absolute', top: 22, right: 26, zIndex: 7, width: 360 },
-  row: { flexDirection: 'row', gap: 14, marginBottom: 14, justifyContent: 'flex-end', marginTop: 15 },
+  topRightWrap: { 
+    position: 'absolute', 
+    top: 22, 
+    right: 26, 
+    zIndex: 7, 
+    width: 360 
+  },
+  row: { 
+    flexDirection: 'row', 
+    gap: 14, 
+    marginBottom: 14, 
+    justifyContent: 'flex-end', 
+    marginTop: 15 
+  },
   pill: {
     flexGrow: 1,
     backgroundColor: '#2763F6',
@@ -429,12 +502,45 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
-  curriculumPill: { flexGrow: 0, width: 135, height: 55, alignItems: 'center', justifyContent: 'center' },
-  gradePill: { flexGrow: 0, width: 110, height: 55, alignItems: 'center', justifyContent: 'center' },
-  subjectPill: { flexGrow: 0, width: 260, height: 55, alignSelf: 'flex-end', justifyContent: 'center' },
-  pillTop: { color: 'rgba(255,255,255,0.85)', fontFamily: 'AlumniSans_500Medium', fontSize: 12, letterSpacing: 1 },
-  pillMain: { color: '#FFFFFF', fontFamily: 'Antonio_700Bold', fontSize: 18, letterSpacing: 0.3, marginTop: 2 },
-  chev: { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
+  curriculumPill: { 
+    flexGrow: 0, 
+    width: 135, 
+    height: 55, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  gradePill: { 
+    flexGrow: 0, 
+    width: 110, 
+    height: 55, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  subjectPill: { 
+    flexGrow: 0, 
+    width: 260, 
+    height: 55, 
+    alignSelf: 'flex-end', 
+    justifyContent: 'center' 
+  },
+  pillTop: { 
+    color: 'rgba(255,255,255,0.85)', 
+    fontFamily: 'AlumniSans_500Medium', 
+    fontSize: 12, 
+    letterSpacing: 1 
+  },
+  pillMain: { 
+    color: '#FFFFFF', 
+    fontFamily: 'Antonio_700Bold', 
+    fontSize: 18, 
+    letterSpacing: 0.3, 
+    marginTop: 2 
+  },
+  chev: { 
+    color: '#FFFFFF', 
+    fontSize: 18, 
+    marginLeft: 8 
+  },
 
   // Modal dropdown
   ddBackdrop: {
@@ -451,11 +557,30 @@ const s = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
-  ddTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
-  ddRow: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10 },
-  ddRowText: { fontSize: 16, color: '#1F2937' },
-  ddCancel: { marginTop: 8, alignSelf: 'flex-end', padding: 8 },
-  ddCancelText: { color: '#1F2937', textDecorationLine: 'underline' },
+  ddTitle: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#1F2937', 
+    marginBottom: 8 
+  },
+  ddRow: { 
+    paddingVertical: 12, 
+    paddingHorizontal: 8, 
+    borderRadius: 10 
+  },
+  ddRowText: { 
+    fontSize: 16, 
+    color: '#1F2937' 
+  },
+  ddCancel: { 
+    marginTop: 8, 
+    alignSelf: 'flex-end', 
+    padding: 8 
+  },
+  ddCancelText: { 
+    color: '#1F2937', 
+    textDecorationLine: 'underline' 
+  },
 
   swoosh: {
     position: 'absolute',
@@ -467,7 +592,14 @@ const s = StyleSheet.create({
     opacity: 0.9,
     zIndex: 2,
   },
-  dot: { position: 'absolute', top: 10, left: 470, height: '5%', zIndex: 1, opacity: 0.95 },
+  dot: { 
+    position: 'absolute', 
+    top: 10, 
+    left: 470, 
+    height: '5%', 
+    zIndex: 1, 
+    opacity: 0.95 
+  },
   heading: {
     fontFamily: 'Antonio_700Bold',
     color: 'white',
@@ -514,7 +646,9 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  bigBlockScroll: { flex: 1 },
+  bigBlockScroll: { 
+    flex: 1 
+  },
 
   scrollBlockItem: {
     width: 220,

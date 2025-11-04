@@ -1,5 +1,5 @@
 // src/screens/TestRunnerScreen.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -22,11 +22,7 @@ type Params = {
   totalMarks: number;     // from AI
   timed?: boolean;        // if true -> countdown
   durationSec?: number;   // required when timed=true
-  // You can pass any structure you’ll render in the content area:
-  // blocks?: Array<{ id: string; heading: string; marks?: number; html?: string }>
 };
-
-const SWOOSH_W = 380;
 
 const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
 const fmt = (secs: number) => {
@@ -46,14 +42,6 @@ export default function TestRunnerScreen() {
     timed = false,
     durationSec = 0,
   } = (route.params || {}) as Params;
-
-  // Header layout for swoosh centering
-  const [headingW, setHeadingW] = useState(0);
-  const [headingX, setHeadingX] = useState(0);
-  const swooshLeft = useMemo(
-    () => (headingW > 0 ? headingX + headingW / 2 - SWOOSH_W / 2 - 30 : '20%'),
-    [headingW, headingX],
-  );
 
   // Timer
   const [paused, setPaused] = useState(false);
@@ -99,7 +87,7 @@ export default function TestRunnerScreen() {
     setPaused((p) => !p);
   };
 
-  // Grey content “test body” — replace with your renderer
+  // Grey content “test body” 
   const Content = (
     <View style={styles.paperInner}>
       {/* Example question header bar */}
@@ -128,6 +116,31 @@ export default function TestRunnerScreen() {
         <Image source={require('../../assets/ResultsTab.png')} style={styles.tab} resizeMode="contain" />
         <Image source={require('../../assets/ProfileTab.png')} style={styles.tab} resizeMode="contain" />
 
+        {/* Clickable text labels (add the rest of the tabs) */}
+        <View style={[styles.tabTextWrapper, styles.posSummaries]}>
+          <Pressable onPress={() => navigation.navigate('Summaries' as never)} hitSlop={12}>
+            <Text style={[styles.tabText, styles.summariesTab]}>SUMMARIES</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.tabTextWrapper, styles.posPractice]}>
+          <Pressable onPress={() => navigation.navigate('PracticeTests' as never)} hitSlop={12}>
+            <Text style={[styles.tabText, styles.practiseOpenTab]}>PRACTISE TESTS</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.tabTextWrapper, styles.posResults]}>
+          <Pressable onPress={() => navigation.navigate('Results' as never)} hitSlop={12}>
+            <Text style={[styles.tabText, styles.resultsTab]}>RESULTS</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.tabTextWrapper, styles.posProfile]}>
+          <Pressable onPress={() => navigation.navigate('ProfileSettings' as never)} hitSlop={12}>
+            <Text style={[styles.tabText, styles.profileTab]}>PROFILE & SETTINGS</Text>
+          </Pressable>
+        </View>
+
         {/* Corner logo */}
         <Image source={require('../../assets/curza-logo.png')} style={styles.cornerLogo} resizeMode="contain" />
 
@@ -139,25 +152,15 @@ export default function TestRunnerScreen() {
           resizeMode="cover"
         >
           {/* DASHBOARD link (like other screens) */}
-          <View style={[styles.tabTextWrapper, styles.posSummaries]}>
+          <View style={[styles.tabTextWrapper, styles.posDashboard]}>
             <Pressable onPress={() => navigation.navigate('Dashboard' as never)} hitSlop={12}>
               <Text style={[styles.tabText, styles.dashboardTab]}>DASHBOARD</Text>
             </Pressable>
           </View>
 
-          {/* Header with swoosh + dot + title */}
+          {/* Header (no swoosh / dot) */}
           <View style={styles.cardInner}>
-            <Image source={require('../../assets/swoosh-yellow.png')} style={[styles.swoosh, { left: swooshLeft }]} resizeMode="contain" />
-            <Image source={require('../../assets/dot-blue.png')} style={styles.dot} resizeMode="contain" />
-
-            <Text
-              style={styles.heading}
-              onLayout={(e) => {
-                const { x, width } = e.nativeEvent.layout;
-                setHeadingX(x);
-                setHeadingW(width);
-              }}
-            >
+            <Text style={styles.heading}>
               {String(title || 'TEST')}
             </Text>
 
@@ -226,7 +229,12 @@ const styles = StyleSheet.create({
   tab: { position: 'absolute', height: '100%', width: '100%', zIndex: 1 },
 
   tabTextWrapper: { position: 'absolute', left: '4.5%', alignItems: 'center', zIndex: 5 },
+  posDashboard: { top: '22%' },
   posSummaries: { top: '22%' },
+  posPractice: { top: '30%' },
+  posResults: { top: '39%' },
+  posProfile: { top: '48%' },
+
   tabText: {
     fontFamily: 'AlumniSans_500Medium',
     fontSize: 20,
@@ -239,6 +247,10 @@ const styles = StyleSheet.create({
     color: '#E5E7EB',
   },
   dashboardTab: { fontWeight: 'bold', marginTop: -115 },
+  summariesTab: { opacity: 0.8, marginTop: -15 },
+  practiseOpenTab: { opacity: 0.8, marginTop: 20 },
+  resultsTab: { opacity: 0.8, marginTop: 45 },
+  profileTab: { opacity: 0.8, marginTop: 72 },
 
   cornerLogo: { position: 'absolute', bottom: 40, left: -55, height: 130, opacity: 0.9, zIndex: 10 },
 
@@ -246,16 +258,6 @@ const styles = StyleSheet.create({
   cardInner: { flex: 1, borderRadius: 40, padding: 28, marginLeft: 210, marginRight: 14 },
   cardImage: { borderRadius: 40, resizeMode: 'cover' },
 
-  swoosh: {
-    position: 'absolute',
-    top: 20,
-    width: SWOOSH_W,
-    height: 100,
-    transform: [{ rotateZ: '-2deg' }],
-    opacity: 0.9,
-    zIndex: 2,
-  },
-  dot: { position: 'absolute', top: 80, left: 10, height: '7%', zIndex: 1, opacity: 0.95 },
 
   heading: {
     fontFamily: 'Antonio_700Bold',

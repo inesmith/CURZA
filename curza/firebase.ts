@@ -1,3 +1,4 @@
+// src/firebase.ts 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, initializeAuth, getReactNativePersistence, type Auth } from 'firebase/auth';
 import { Platform } from 'react-native';
@@ -5,7 +6,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-
 
 // --- Firebase config ---
 const firebaseConfig = { 
@@ -16,7 +16,7 @@ const firebaseConfig = {
   messagingSenderId: "1052480298705",
   appId: "1:1052480298705:web:947cf2267208bda8e32ff0",
   measurementId: "G-WL3RX44BEP"
- };
+};
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
@@ -36,7 +36,14 @@ export const auth = _auth;
 
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// region must match your deployed functions list (us-central1)
 export const functions = getFunctions(app, 'us-central1');
-export const scoreTestAI = httpsCallable(functions, 'scoreTest');
-export const summarizeAI  = httpsCallable(functions, 'summarize');
-export const createTestAI = httpsCallable(functions, 'createTest');
+
+// Keep client API in “test” terms
+export const createTestAI = httpsCallable(functions, 'createTest'); // aliases to buildQuiz on server
+export const summariseAI  = httpsCallable(functions, 'summarise');
+export const scoreTestAI  = httpsCallable(functions, 'scoreTest');  // simple stub added on server
+
+// functions/src/index.ts re-exports (server-side) live in the functions project only, not here.
+

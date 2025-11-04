@@ -4,7 +4,7 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: "***REMOVED***" });
 
-export const summarize = functions.onCall<{topic:string; grade?:string}>(
+export const summarise = functions.onCall<{topic:string; grade?:string}>(
   async (req) => {
     const { topic, grade = "" } = req.data;
 

@@ -88,7 +88,7 @@ function SignedInStack() {
       <Stack.Screen name="Results" component={ResultsScreen} />
       <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
       <Stack.Screen name="ResultDetail" component={ResultDetailScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="TestRunner" component={TestRunnerScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="TestRunner" component={TestRunnerScreen} />
     </Stack.Navigator>
   );
 }

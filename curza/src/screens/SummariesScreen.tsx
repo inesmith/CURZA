@@ -15,7 +15,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
 // AI callables
-import { summarizeAI, createTestAI } from '../../firebase';
+import { summariseAI, createTestAI } from '../../firebase';
 
 // Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -131,7 +131,7 @@ export default function SummariesScreen() {
   // —— AI actions ——
   const handleSummarize = async () => {
     try {
-      const res = await summarizeAI({
+      const res = await summariseAI({
         text:
           'Photosynthesis allows plants to convert light energy into chemical energy stored in glucose.',
         subject: 'Life Sciences',
