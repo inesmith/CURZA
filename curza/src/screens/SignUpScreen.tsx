@@ -12,9 +12,9 @@ import { signUpWithEmail } from '../services/authService';
 import { humanAuthError } from "../utils/firebaseErrors";
 import { useNotice } from "../contexts/NoticeProvider";
 
-// your dropdown components
+// dropdown components
 import Select, { Option } from "../ui/Select";
-import MultiSelect from "../ui/MultiSelect";
+// NOTE: MultiSelect import removed (no longer used)
 
 // data folder
 import { CURRICULUMS } from "../data/curriculums";  
@@ -72,11 +72,11 @@ export default function SignUpScreen() {
   const LANGS: Option[] = useMemo(() => toOptions(LANGUAGES), []);
 
   // subjects by phase, merged with HL/FAL
-  const JUNIOR_SUBJECT_OPTIONS: Option[] = useMemo(() => {
+  const JUNIOR_SUBJECT_OPTIONS = useMemo(() => {
     const merged = dedupeByLabel([...LANG_SPECIFIC, ...SUBJECTS.junior]);
     return toOptions(merged);
   }, []);
-  const SENIOR_SUBJECT_OPTIONS: Option[] = useMemo(() => {
+  const SENIOR_SUBJECT_OPTIONS = useMemo(() => {
     const merged = dedupeByLabel([...LANG_SPECIFIC, ...SUBJECTS.senior]);
     return toOptions(merged);
   }, []);
@@ -85,6 +85,8 @@ export default function SignUpScreen() {
   const [curriculum, setCurriculum] = useState<string | null>(null);
   const [grade, setGrade] = useState<string | null>(null);
   const [language, setLanguage] = useState<string | null>(null);
+
+  // Keep array shape for persistence (now single-select)
   const [subjects, setSubjects] = useState<string[]>([]);
 
   const isJunior = useMemo(() => {
@@ -92,7 +94,7 @@ export default function SignUpScreen() {
     return Number.isFinite(n) ? n < 10 : false;
   }, [grade]);
 
-  const SUBJECT_OPTIONS = useMemo<Option[]>(() => {
+  const SUBJECT_OPTIONS = useMemo(() => {
     return isJunior ? JUNIOR_SUBJECT_OPTIONS : SENIOR_SUBJECT_OPTIONS;
   }, [isJunior, JUNIOR_SUBJECT_OPTIONS, SENIOR_SUBJECT_OPTIONS]);
 
@@ -102,6 +104,32 @@ export default function SignUpScreen() {
     const juniorSet = new Set(JUNIOR_SUBJECT_OPTIONS.map(s => s.value));
     setSubjects(prev => prev.filter(v => juniorSet.has(v)));
   }, [isJunior, JUNIOR_SUBJECT_OPTIONS]);
+
+  // Build Subject list: Mathematics enabled (black), others disabled (grey)
+  // Build Subject list: Mathematics first (enabled/black), others disabled/grey
+const SUBJECT_SINGLE_LIST: Option[] = useMemo(() => {
+  const mathVal = 'mathematics';
+
+  // map once so we can partition while preserving original order for non-math
+  const mapped = SUBJECT_OPTIONS.map((o) => {
+    const isMath = o.value === mathVal || o.label.toLowerCase() === 'mathematics';
+    return {
+      ...o,
+      value: isMath ? mathVal : o.value, // canonicalize
+      disabled: !isMath,                 // only Math selectable
+    };
+  });
+
+  const math = mapped.find(o => o.value === mathVal)
+    ?? { label: 'Mathematics', value: mathVal, disabled: false };
+
+  const others = mapped.filter(o => o.value !== mathVal);
+
+  return [math, ...others]; // Mathematics at the top
+}, [SUBJECT_OPTIONS]);
+
+
+  const selectedSubject = subjects[0] ?? null;
 
   const onCreate = async () => {
     if (!terms) {
@@ -145,7 +173,6 @@ export default function SignUpScreen() {
         );
       }
 
-      // Friendly heads-up to check inbox
       show("Account created! We’ve sent you a verification email — please verify to log in.", "success");
     } catch (e: any) {
       const msg = humanAuthError(e?.code) || "Something went wrong. Please try again.";
@@ -256,15 +283,15 @@ export default function SignUpScreen() {
                     textStyle={{ color: 'white' }}
                   />
 
+                  {/* Subjects: single-select; only Mathematics enabled */}
                   <Text style={s.label}>Subjects</Text>
-                  <MultiSelect
-                    placeholder="Select Subjects"
-                    values={subjects}
-                    onChange={setSubjects}
-                    options={SUBJECT_OPTIONS}
+                  <Select
+                    placeholder="Select Subject"
+                    value={selectedSubject}
+                    onChange={(val) => setSubjects([val])}
+                    options={SUBJECT_SINGLE_LIST}
                     style={s.input}
                     textStyle={{ color: 'white' }}
-                    max={7}
                   />
 
                   <Pressable style={s.checkRow} onPress={() => setCentre(v => !v)}>
@@ -293,7 +320,6 @@ export default function SignUpScreen() {
     </View>
   );
 }
-
 
 const BLUE = '#2563EB';
 const INPUT = '#3B82F6';
