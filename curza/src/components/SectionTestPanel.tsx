@@ -1,4 +1,3 @@
-// src/components/SectionTestPanel.tsx
 import React, { useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -17,12 +16,12 @@ export type SectionTestParams = {
 };
 
 type Props = {
-  curriculum?: string;               // ✅ new (optional)
+  curriculum?: string;               // optional
   subject: string;
   grade: string | number;
   topics: string[];
   questionCounts: number[];
-  onStart?: (params: SectionTestParams) => void; // still supported
+  onStart?: (params: SectionTestParams) => void;
 };
 
 export default function SectionTestPanel({

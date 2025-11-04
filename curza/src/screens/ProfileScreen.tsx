@@ -830,7 +830,7 @@ const s = StyleSheet.create({
   },
 
   subjectsBox: {
-    minHeight: 140,
+    minHeight: 133,
     borderRadius: 12,
     backgroundColor: 'none',
     paddingHorizontal: 16,

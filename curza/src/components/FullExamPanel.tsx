@@ -1,4 +1,3 @@
-// src/components/FullExamPanel.tsx
 import React, { useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -16,11 +15,11 @@ export type FullExamParams = {
 };
 
 type Props = {
-  curriculum?: string;               // ✅ new (optional)
+  curriculum?: string;               // optional
   subject: string;
   grade: string | number;
   papers: string[];
-  onStart?: (params: FullExamParams) => void; // still supported
+  onStart?: (params: FullExamParams) => void;
 };
 
 export default function FullExamPanel({ curriculum, subject, grade, papers, onStart }: Props) {

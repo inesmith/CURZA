@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Image, ImageBackground, Modal, } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ImageBackground,
+  Modal,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
@@ -9,20 +18,12 @@ import SectionTestPanel from '../components/SectionTestPanel';
 import FullExamPanel from '../components/FullExamPanel';
 
 // AI callable
-import { createTestAI } from '../../firebase';
+import { createTestAI, getTopicListAI, getPaperListAI } from '../../firebase';
 
 // Firebase (for user data)
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-
-// Panel option lists 
-const TOPICS = [
-  'Algebra', 'Functions & Graphs', 'Trigonometry', 'Geometry', 'Probability',
-  'Calculus: Differentiation', 'Calculus: Integration', 'Financial Maths'
-];
-const QUESTION_COUNTS = [5, 10, 15, 20, 25, 30];
-const PAPERS = ['Paper 1', 'Paper 2', 'Paper 3'];
 
 type BuildTestResponse = {
   message?: string;
@@ -45,6 +46,10 @@ export default function PractiseScreen() {
   const [subject, setSubject] = useState('Mathematics');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
   const [subjects, setSubjects] = useState<string[]>([]);
+
+  // 🔹 dynamic topic/paper lists
+  const [topicOptions, setTopicOptions] = useState<string[]>([]);
+  const [paperOptions, setPaperOptions] = useState<string[]>([]);
 
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
@@ -71,6 +76,7 @@ export default function PractiseScreen() {
       )
       .join(' ');
 
+  // 🔹 fetch user profile
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -79,7 +85,8 @@ export default function PractiseScreen() {
         const snap = await getDoc(doc(db, 'users', user.uid));
         const profile = snap.exists() ? (snap.data() as any) : undefined;
 
-        if (profile?.curriculum) setCurriculum(normalizeCurriculum(profile.curriculum));
+        if (profile?.curriculum)
+          setCurriculum(normalizeCurriculum(profile.curriculum));
         if (profile?.grade) setGrade(profile.grade);
 
         const subs: any[] =
@@ -98,14 +105,56 @@ export default function PractiseScreen() {
           }
         }
       } catch {
-        // ignore errors
+        // ignore
       }
     });
     return () => unsub();
   }, []);
 
-  // Full test -> call AI, then navigate with payload blocks
-  const onStartFull = async (params: import('../components/FullExamPanel').FullExamParams) => {
+  // 🔹 dynamically fetch topic/paper lists via AI
+  useEffect(() => {
+    let cancelled = false;
+    const ctx = { curriculum, grade, subject };
+
+    Promise.all([getTopicListAI(ctx), getPaperListAI(ctx)])
+      .then(([topicsRes, papersRes]) => {
+        if (cancelled) return;
+
+        const t = Array.isArray(topicsRes.data?.topics)
+          ? (topicsRes.data!.topics as string[]).filter(Boolean)
+          : [];
+        const p = Array.isArray(papersRes.data?.papers)
+          ? (papersRes.data!.papers as string[]).filter(Boolean)
+          : [];
+
+        setTopicOptions(
+          t.length
+            ? t
+            : [
+                'Algebra',
+                'Functions & Graphs',
+                'Trigonometry',
+                'Geometry',
+                'Probability',
+                'Calculus: Differentiation',
+                'Calculus: Integration',
+                'Financial Maths',
+              ]
+        );
+
+        setPaperOptions(p.length ? p : ['Paper 1', 'Paper 2', 'Paper 3']);
+      })
+      .catch((err) => console.log('listOptionsAI error:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [curriculum, grade, subject]);
+
+  // 🔹 Full test -> call AI, then navigate
+  const onStartFull = async (
+    params: import('../components/FullExamPanel').FullExamParams
+  ) => {
     try {
       const res = await createTestAI({
         subject: params.subject,
@@ -121,13 +170,16 @@ export default function PractiseScreen() {
         title: payload.title ?? `${params.subject} ${params.examType}`,
         subject: params.subject,
         totalMarks: payload.totalMarks ?? 150,
-        timed: typeof payload.timed === 'boolean' ? payload.timed : !!params.timed,
+        timed:
+          typeof payload.timed === 'boolean'
+            ? payload.timed
+            : !!params.timed,
         durationSec:
           typeof payload.durationSec === 'number'
             ? payload.durationSec
             : params.timed
-              ? (params.durationSec ?? 3 * 60 * 60)
-              : undefined,
+            ? params.durationSec ?? 3 * 60 * 60
+            : undefined,
         blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
       } as any);
     } catch (err) {
@@ -135,8 +187,10 @@ export default function PractiseScreen() {
     }
   };
 
-  // Section test -> call AI, then navigate with payload blocks
-  const onStartSection = async (params: import('../components/SectionTestPanel').SectionTestParams) => {
+  // 🔹 Section test -> call AI, then navigate
+  const onStartSection = async (
+    params: import('../components/SectionTestPanel').SectionTestParams
+  ) => {
     try {
       const res = await createTestAI({
         subject: params.subject,
@@ -152,14 +206,18 @@ export default function PractiseScreen() {
         mode: 'section',
         title: payload.title ?? (params.topic ?? 'Section'),
         subject: params.subject,
-        totalMarks: payload.totalMarks ?? ((params.count ?? 10) * 5),
-        timed: typeof payload.timed === 'boolean' ? payload.timed : !!params.timed,
+        totalMarks: payload.totalMarks ?? (params.count ?? 10) * 5,
+        timed:
+          typeof payload.timed === 'boolean'
+            ? payload.timed
+            : !!params.timed,
         durationSec:
           typeof payload.durationSec === 'number'
             ? payload.durationSec
             : params.timed
-              ? (params.durationSec ?? (params.count ?? 10) * 120)
-              : undefined,
+            ? params.durationSec ??
+              (params.count ?? 10) * 120
+            : undefined,
         blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
       } as any);
     } catch (err) {
@@ -170,7 +228,6 @@ export default function PractiseScreen() {
   return (
     <View style={s.page}>
       <View style={s.imageWrapper}>
-        {/* Left rail artwork */}
         <Image
           source={require('../../assets/DashboardTab.png')}
           style={s.logintab}
@@ -192,10 +249,14 @@ export default function PractiseScreen() {
           resizeMode="contain"
         />
 
-        {/* Clickable text labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
-          <Pressable onPress={() => navigation.navigate('Summaries')} hitSlop={12}>
-            <Text style={[s.tabText, s.summariesTab]}>SUMMARIES</Text>
+          <Pressable
+            onPress={() => navigation.navigate('Summaries')}
+            hitSlop={12}
+          >
+            <Text style={[s.tabText, s.summariesTab]}>
+              SUMMARIES
+            </Text>
           </Pressable>
         </View>
 
@@ -204,7 +265,9 @@ export default function PractiseScreen() {
             onPress={() => navigation.navigate('PracticeTests')}
             hitSlop={12}
           >
-            <Text style={[s.tabText, s.practiseOpenTab]}>PRACTISE TESTS</Text>
+            <Text style={[s.tabText, s.practiseOpenTab]}>
+              PRACTISE TESTS
+            </Text>
           </Pressable>
         </View>
 
@@ -218,19 +281,22 @@ export default function PractiseScreen() {
         </View>
 
         <View style={[s.tabTextWrapper, s.posProfile]}>
-          <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={12}>
-            <Text style={[s.tabText, s.profileTab]}>PROFILE & SETTINGS</Text>
+          <Pressable
+            onPress={() => navigation.navigate('ProfileSettings')}
+            hitSlop={12}
+          >
+            <Text style={[s.tabText, s.profileTab]}>
+              PROFILE & SETTINGS
+            </Text>
           </Pressable>
         </View>
 
-        {/* Corner logo */}
         <Image
           source={require('../../assets/curza-logo.png')}
           style={s.cornerLogo}
           resizeMode="contain"
         />
 
-        {/* Main background */}
         <ImageBackground
           source={require('../../assets/PractiseOpenTab.png')}
           style={s.card}
@@ -238,23 +304,26 @@ export default function PractiseScreen() {
           resizeMode="cover"
         >
           <View style={[s.tabTextWrapper, s.posSummaries]}>
-            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={12}>
+            <Pressable
+              onPress={() => navigation.navigate('Dashboard')}
+              hitSlop={12}
+            >
               <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
             </Pressable>
           </View>
 
-          {/* 🔵 TOP-RIGHT BLUE BLOCKS (unchanged) */}
+          {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
             <View style={s.row}>
               <View style={[s.pill, s.curriculumPill]}>
                 <Text style={s.pillTop}>CURRICULUM</Text>
-                <Text style={s.pillMain} numberOfLines={1}>
+                <Text style={s.pillMain}>
                   {String(curriculum).toUpperCase()}
                 </Text>
               </View>
               <View style={[s.pill, s.gradePill]}>
                 <Text style={s.pillTop}>GRADE</Text>
-                <Text style={s.pillMain} numberOfLines={1}>
+                <Text style={s.pillMain}>
                   {String(grade).toUpperCase()}
                 </Text>
               </View>
@@ -265,18 +334,19 @@ export default function PractiseScreen() {
               <Pressable
                 onPress={() => setShowSubjectDrop(true)}
                 hitSlop={6}
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
               >
                 <View style={{ flexShrink: 1, paddingRight: 8 }}>
                   <Text style={s.pillTop}>SUBJECT</Text>
-                  <Text style={s.pillMain} numberOfLines={1}>
-                    {subject}
-                  </Text>
+                  <Text style={s.pillMain}>{subject}</Text>
                 </View>
                 <Text style={s.chev}>▾</Text>
               </Pressable>
 
-              {/* Modal options */}
               <Modal
                 transparent
                 visible={showSubjectDrop}
@@ -300,7 +370,10 @@ export default function PractiseScreen() {
                         </Pressable>
                       ))}
                     </ScrollView>
-                    <Pressable style={s.ddCancel} onPress={() => setShowSubjectDrop(false)}>
+                    <Pressable
+                      style={s.ddCancel}
+                      onPress={() => setShowSubjectDrop(false)}
+                    >
                       <Text style={s.ddCancelText}>Cancel</Text>
                     </Pressable>
                   </View>
@@ -308,8 +381,8 @@ export default function PractiseScreen() {
               </Modal>
             </View>
           </View>
-          {/* 🔵 END TOP-RIGHT BLOCKS */}
 
+          {/* main content */}
           <View style={s.cardInner}>
             <Image
               source={require('../../assets/swoosh-yellow.png')}
@@ -325,38 +398,43 @@ export default function PractiseScreen() {
             <Text style={s.heading}>PRACTISE WITH WRITING TESTS</Text>
             <Text style={s.sub}>Ready to learn today?</Text>
 
-            {/* Scrollable block */}
             <View style={s.bigBlock}>
               <ScrollView
                 style={s.bigBlockScroll}
-                contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
+                contentContainerStyle={{
+                  paddingBottom: 20,
+                  paddingRight: 6,
+                }}
                 showsVerticalScrollIndicator
               >
                 <View style={s.panelsRow}>
                   <SectionTestPanel
                     subject={subject}
                     grade={grade}
-                    topics={TOPICS}
-                    questionCounts={QUESTION_COUNTS}
+                    curriculum={curriculum}
+                    topics={topicOptions}
+                    questionCounts={[5, 10, 15, 20, 25, 30]}
                     onStart={onStartSection}
                   />
                   <FullExamPanel
                     subject={subject}
                     grade={grade}
-                    papers={PAPERS}
+                    curriculum={curriculum}
+                    papers={paperOptions}
                     onStart={onStartFull}
                   />
                 </View>
-                {/* Info banner*/}
+
                 <View style={s.infoBanner}>
                   <Text style={s.infoText}>
-                    FULL EXAMS FOLLOW THE OFFICIAL {String(curriculum).toUpperCase()} STRUCTURE AND INCLUDE MULTIPLE SECTIONS.{'\n'}
+                    FULL EXAMS FOLLOW THE OFFICIAL{' '}
+                    {String(curriculum).toUpperCase()} STRUCTURE AND
+                    INCLUDE MULTIPLE SECTIONS.{'\n'}
                     AI WILL MARK STEP-BY-STEP AND PROVIDE FEEDBACK.
                   </Text>
                 </View>
               </ScrollView>
             </View>
-            {/* End scrollable block */}
           </View>
         </ImageBackground>
       </View>
@@ -505,7 +583,7 @@ const s = StyleSheet.create({
     marginTop: 30,
     marginLeft: -20,
     marginRight: -40,
-    height: 620,              
+    height: 620,
     alignSelf: 'stretch',
     overflow: 'hidden',
     shadowColor: '#000',

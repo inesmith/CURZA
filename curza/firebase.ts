@@ -1,4 +1,3 @@
-// src/firebase.ts 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, initializeAuth, getReactNativePersistence, type Auth } from 'firebase/auth';
 import { Platform } from 'react-native';
@@ -45,5 +44,23 @@ export const summariseAI  = httpsCallable(functions, 'summarise');
 export const scoreTestAI  = httpsCallable(functions, 'scoreTest');  // simple stub added on server
 export const createTestAI = httpsCallable(functions, 'buildTest');
 
-// functions/src/index.ts re-exports (server-side) live in the functions project only, not here.
+// --- 🔹 New: Typed helpers for AI lists ---
+type ListCtx = { curriculum: string; grade: string | number; subject: string };
+type TopicsResp = { topics?: string[] };
+type PapersResp = { papers?: string[] };
 
+export async function getTopicListAI(params: ListCtx) {
+  const callable = httpsCallable<ListCtx & { type: 'topics' }, TopicsResp>(
+    functions,
+    'listOptionsAI'
+  );
+  return callable({ ...params, type: 'topics' });
+}
+
+export async function getPaperListAI(params: ListCtx) {
+  const callable = httpsCallable<ListCtx & { type: 'papers' }, PapersResp>(
+    functions,
+    'listOptionsAI'
+  );
+  return callable({ ...params, type: 'papers' });
+}
