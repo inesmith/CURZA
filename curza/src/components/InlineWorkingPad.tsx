@@ -1,12 +1,20 @@
 // src/components/InlineWorkingPad.tsx
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { View, Pressable, Text, StyleSheet } from 'react-native';
-import SignatureScreen from 'react-native-signature-canvas';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { View, Pressable, Text, StyleSheet, PanResponder, LayoutChangeEvent } from 'react-native';
+import {
+  Canvas,
+  Path as SkPathComp,
+  Path,
+  Skia,
+  Image as SkImage,
+  useCanvasRef,
+  ImageFormat,
+} from '@shopify/react-native-skia';
 
 type Variant = 'plain' | 'ruled' | 'grid';
 
 type Props = {
-  value?: string | null;
+  value?: string | null;            // existing dataURL (restored as background)
   onChange: (dataUrl: string) => void;
   height?: number;
   variant?: Variant;
@@ -19,6 +27,12 @@ type Props = {
 const PEN_COLORS = ['#1F2937', '#FACC15', '#2763F6', '#10B981', '#F472B6'];
 const PEN_SIZES = [1.5, 2, 2.5, 3.5, 5, 7];
 
+type Stroke = {
+  path: ReturnType<typeof Skia.Path.Make>;
+  color: string;
+  size: number;
+};
+
 export default function InlineWorkingPad({
   value,
   onChange,
@@ -29,287 +43,229 @@ export default function InlineWorkingPad({
   initialPenColor = '#F8FAFC',
   initialPenSize = 2.5,
 }: Props) {
-  const padRef = useRef<any>(null);
+  const canvasRef = useCanvasRef();
 
-  // current tool
+  // tool state (does NOT clear strokes)
   const [penIdx, setPenIdx] = useState(
-    Math.max(0, PEN_COLORS.findIndex((c) => c.toLowerCase() === initialPenColor.toLowerCase()))
+    Math.max(0, PEN_COLORS.findIndex((c) => c.toLowerCase() === (initialPenColor || '').toLowerCase()))
   );
   const [sizeIdx, setSizeIdx] = useState(
     Math.max(0, PEN_SIZES.findIndex((s) => s === initialPenSize))
   );
-
   const penColor = PEN_COLORS[penIdx] ?? '#F8FAFC';
   const penSize = PEN_SIZES[sizeIdx] ?? 2.5;
 
-  // keep the latest strokes so we can restore after remount
-  const [persisted, setPersisted] = useState<string | null>(value ?? null);
-  // bump this to force a remount when tool changes
-  const [nonce, setNonce] = useState(0);
-
-  // we keep onOK handler in a ref so we can temporarily intercept it in captureThen
-  const onOKRef = useRef<((base64: string) => void) | undefined>(undefined);
-  const handleOK = (base64: string) => {
-    const full = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
-    setPersisted(full);
-    onChange(full);
+  // canvas size
+  const [cSize, setCSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const onCanvasLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width && height && (width !== cSize.w || height !== cSize.h)) {
+      setCSize({ w: width, h: height });
+    }
   };
-  onOKRef.current = handleOK;
 
-  // helper: capture current drawing to persisted, then run update()
-  const captureThen = async (update: () => void) => {
-    let resolved = false;
-
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        update();
-        setNonce((n) => n + 1);
-      }
-    }, 250);
-
-    const handleSnapshot = (dataURL: string) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
-      const full = dataURL.startsWith('data:') ? dataURL : `data:image/png;base64,${dataURL}`;
-      setPersisted(full);
-      update();
-      setNonce((n) => n + 1);
-    };
-
+  // decode dataURL -> Skia Image
+  const bgImage = useMemo(() => {
+    if (!value) return null;
     try {
-      const origOnOK = onOKRef.current;
-      onOKRef.current = (base64) => {
-        handleSnapshot(base64);
-        origOnOK?.(base64);
-        onOKRef.current = origOnOK;
-      };
-      padRef.current?.readSignature();
+      const b64 = value.startsWith('data:') ? value.split(',')[1] ?? '' : value;
+      const data = Skia.Data.fromBase64(b64);
+      return Skia.Image.MakeImageFromEncoded(data);
     } catch {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        update();
-        setNonce((n) => n + 1);
+      return null;
+    }
+  }, [value]);
+
+  // strokes
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const currentPathRef = React.useRef<ReturnType<typeof Skia.Path.Make> | null>(null);
+  const lastPtRef = React.useRef<{ x: number; y: number } | null>(null);
+  const MIN_DIST = 0.5;
+
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          const { locationX, locationY } = evt.nativeEvent;
+          const p = Skia.Path.Make();
+          p.moveTo(locationX, locationY);
+          currentPathRef.current = p;
+          lastPtRef.current = { x: locationX, y: locationY };
+          setStrokes((prev) => [...prev, { path: p, color: penColor, size: penSize }]);
+        },
+        onPanResponderMove: (evt) => {
+          const { locationX, locationY } = evt.nativeEvent;
+          const cur = currentPathRef.current;
+          if (!cur) return;
+
+          const last = lastPtRef.current;
+          if (!last || Math.hypot(locationX - last.x, locationY - last.y) >= MIN_DIST) {
+            cur.lineTo(locationX, locationY);
+            lastPtRef.current = { x: locationX, y: locationY };
+            setStrokes((prev) => [...prev]); // re-render
+          }
+        },
+        onPanResponderRelease: () => {
+          currentPathRef.current = null;
+          lastPtRef.current = null;
+        },
+        onPanResponderTerminate: () => {
+          currentPathRef.current = null;
+          lastPtRef.current = null;
+        },
+      }),
+    [penColor, penSize]
+  );
+
+  // snapshot → base64 PNG and emit
+  const snapshotToBase64 = useCallback(() => {
+    try {
+      if (!canvasRef.current || cSize.w === 0 || cSize.h === 0) return;
+      const image = canvasRef.current.makeImageSnapshot({
+        x: 0,
+        y: 0,
+        width: cSize.w,
+        height: cSize.h,
+      });
+      if (!image) return;
+      const b64 = image.encodeToBase64(ImageFormat.PNG, 100);
+      if (!b64) return;
+      onChange(`data:image/png;base64,${b64}`);
+    } catch {
+      // ignore
+    }
+  }, [canvasRef, cSize.w, cSize.h, onChange]);
+
+  // avoid render-loop: only snapshot on unmount
+  const snapshotRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    snapshotRef.current = snapshotToBase64;
+  }, [snapshotToBase64]);
+
+  useEffect(() => {
+    return () => {
+      snapshotRef.current?.();
+    };
+  }, []);
+
+  // ruled/grid background
+  const Background = useMemo(() => {
+    const lines: JSX.Element[] = [];
+    if (cSize.w === 0 || cSize.h === 0) return null;
+
+    if (variant === 'grid') {
+      const g = Math.max(8, gridSize | 0);
+      for (let x = 0; x <= cSize.w; x += g) {
+        const p = Skia.Path.Make();
+        p.moveTo(x, 0); p.lineTo(x, cSize.h);
+        lines.push(
+          <SkPathComp key={`gv-${x}`} path={p} color="rgba(255,255,255,0.14)" style="stroke" strokeWidth={1} />
+        );
+      }
+      for (let y = 0; y <= cSize.h; y += g) {
+        const p = Skia.Path.Make();
+        p.moveTo(0, y); p.lineTo(cSize.w, y);
+        lines.push(
+          <SkPathComp key={`gh-${y}`} path={p} color="rgba(255,255,255,0.14)" style="stroke" strokeWidth={1} />
+        );
+      }
+    } else if (variant === 'ruled') {
+      const s = Math.max(10, lineSpacing | 0);
+      for (let y = s; y < cSize.h; y += s) {
+        const p = Skia.Path.Make();
+        p.moveTo(0, y); p.lineTo(cSize.w, y);
+        lines.push(
+          <SkPathComp key={`rl-${y}`} path={p} color="rgba(255,255,255,0.18)" style="stroke" strokeWidth={1} />
+        );
       }
     }
+
+    return <>{lines}</>;
+  }, [variant, gridSize, lineSpacing, cSize]);
+
+  // --- Undo support ---
+  const canUndo = strokes.length > 0;
+  const handleUndo = () => {
+    setStrokes((prev) => (prev.length ? prev.slice(0, -1) : prev));
   };
-
-  // background ruling/grid
-  const canvasBackgroundCSS = useMemo(() => {
-    if (variant === 'grid') {
-      const g = gridSize;
-      return `
-        background-image:
-          linear-gradient(to right, rgba(255,255,255,0.14) 1px, transparent 1px),
-          linear-gradient(to bottom, rgba(255,255,255,0.14) 1px, transparent 1px);
-        background-size: ${g}px ${g}px, ${g}px ${g}px;
-        background-position: 0 0, 0 0;
-      `;
-    }
-    if (variant === 'ruled') {
-      const s = lineSpacing;
-      return `
-        background-image:
-          linear-gradient(
-            to bottom,
-            transparent ${s - 1}px,
-            rgba(255,255,255,0.18) ${s - 1}px,
-            rgba(255,255,255,0.18) ${s}px,
-            transparent ${s}px
-          );
-        background-size: 100% ${s}px;
-        background-position: 0 0;
-      `;
-    }
-    return `background: transparent;`;
-  }, [variant, gridSize, lineSpacing]);
-
-  // CSS for better pen capture
-  const webStyle = `
-    .m-signature-pad { box-shadow: none; border: 0; margin: 0; }
-    .m-signature-pad--footer { display: none; margin: 0; }
-    .m-signature-pad--body {
-      margin: 0;
-      border: 0;
-      ${canvasBackgroundCSS}
-      touch-action: none !important;
-      overscroll-behavior: contain !important;
-      -webkit-user-select: none !important;
-      user-select: none !important;
-      -webkit-touch-callout: none !important;
-    }
-    body, html {
-      background: transparent;
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      width: 100%;
-      touch-action: none !important;
-      overscroll-behavior: contain !important;
-      -webkit-user-select: none !important;
-      user-select: none !important;
-      -webkit-touch-callout: none !important;
-    }
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
-      ${canvasBackgroundCSS}
-      background: transparent !important;
-      display: block;
-      touch-action: none !important;
-      will-change: transform;
-    }
-  `;
-
-  // Tune SignaturePad sampling (more responsive)
-  const applySamplingTuning = () => {
-    padRef.current?.injectJavaScript?.(`
-      try {
-        if (window.signaturePad) {
-          // capture more points per move & reduce smoothing
-          signaturePad.throttle = 0;                // no throttling
-          signaturePad.minDistance = 0.1;           // denser points
-          signaturePad.velocityFilterWeight = 0.2;  // less smoothing for quick strokes
-          signaturePad.minWidth = ${penSize};
-          signaturePad.maxWidth = ${penSize};
-          signaturePad.penColor = '${penColor}';
-        }
-      } catch (e) {}
-      true;
-    `);
-  };
-
-  // Force canvas DPR ~0.9–1.0 for lower latency; keep visual size identical
-  const applyCanvasScale = () => {
-    padRef.current?.injectJavaScript?.(`
-      try {
-        const canvas = document.querySelector('canvas');
-        if (canvas) {
-          if (window.signaturePad && typeof signaturePad._resizeCanvas === 'function') {
-            signaturePad._resizeCanvas = function() { /* no-op; we manage size */ };
-          }
-          const ratio = 0.95; // tweak 0.85–1.1 if needed
-          const w = canvas.offsetWidth;
-          const h = canvas.offsetHeight;
-          const ctx = canvas.getContext('2d');
-          const current = canvas.toDataURL();
-
-          canvas.width = Math.max(1, Math.floor(w * ratio));
-          canvas.height = Math.max(1, Math.floor(h * ratio));
-          ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-
-          if (current && current.startsWith('data:')) {
-            const img = new Image();
-            img.onload = () => { ctx.drawImage(img, 0, 0, w, h); };
-            img.src = current;
-          }
-        }
-      } catch (e) {}
-      true;
-    `);
-  };
-
-  // Patch to use coalesced pointer events (many more samples per move)
-  const applyCoalescedPatch = () => {
-    padRef.current?.injectJavaScript?.(`
-      try {
-        if (window.signaturePad && !window.__curzaCoalesced) {
-          const canvas = document.querySelector('canvas');
-          if (canvas) {
-            canvas.addEventListener('pointermove', function(ev) {
-              if (!window.signaturePad || !signaturePad._isDrawing) return;
-              const list = (ev.getCoalescedEvents && ev.getCoalescedEvents()) || [ev];
-              // Feed extra high-res samples to signaturePad
-              for (let i = 0; i < list.length; i++) {
-                const e = list[i];
-                signaturePad._strokeMoveUpdate(e);
-              }
-              ev.preventDefault();
-            }, { passive: false });
-
-            // Ensure pen buttons down/up still work normally
-            canvas.addEventListener('pointerdown', function(ev){
-              if (signaturePad && ev.pointerType) {
-                // prioritize pen input
-              }
-            }, { passive: false });
-
-            window.__curzaCoalesced = true;
-          }
-        }
-      } catch (e) {}
-      true;
-    `);
-  };
-
-  // Run tuning after every mount/remount
-  useEffect(() => {
-    const t1 = setTimeout(applyCanvasScale, 30);
-    const t2 = setTimeout(applySamplingTuning, 60);
-    const t3 = setTimeout(applyCoalescedPatch, 90);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nonce]);
 
   return (
     <View style={[s.wrap, { height: height + 48 }]}>
-      <View style={[s.canvas, { height }]}>
-        <SignatureScreen
-          key={`sig-${nonce}`}
-          ref={padRef}
-          onOK={(b64: string) => onOKRef.current?.(b64)}
-          onEmpty={() => {}}
-          descriptionText=""
-          clearText="Clear"
-          confirmText="Save"
-          autoClear={false}
-          webStyle={webStyle}
-          backgroundColor="transparent"
-          imageType="image/png"
-          penColor={penColor}
-          minWidth={penSize}
-          maxWidth={penSize}
-          dataURL={persisted ?? undefined}
-          style={{ flex: 1, backgroundColor: 'transparent' }}
+      <View style={[s.canvas, { height }]} onLayout={onCanvasLayout}>
+        <Canvas ref={canvasRef} style={{ flex: 1 }}>
+          {/* previously saved image (if any) */}
+          {bgImage ? (
+            <SkImage image={bgImage} x={0} y={0} width={cSize.w} height={cSize.h} />
+          ) : null}
+
+          {/* ruled/grid background */}
+          {Background}
+
+          {/* live strokes */}
+          {strokes.map((st, idx) => (
+            <SkPathComp
+              key={idx}
+              path={st.path}
+              color={st.color}
+              style="stroke"
+              strokeWidth={st.size}
+              strokeJoin="round"
+              strokeCap="round"
+            />
+          ))}
+        </Canvas>
+
+        {/* invisible touch layer */}
+        <View
+          {...panResponder.panHandlers}
+          pointerEvents="box-only"
+          style={StyleSheet.absoluteFillObject}
         />
       </View>
 
       <View style={s.toolbar}>
         <View style={s.leftGroup}>
+          {/* Undo (one stroke at a time) */}
           <Pressable
-            onPress={() => padRef.current?.clearSignature()}
-            style={[s.btn, s.btnGhost, s.equalBtn]}
+            onPress={handleUndo}
+            disabled={!canUndo}
+            style={[
+              s.btn,
+              s.btnGhost,
+              s.equalBtn,
+              !canUndo && { opacity: 0.5 },
+            ]}
             hitSlop={6}
           >
-            <Text style={s.btnGhostText}>Clear</Text>
+            <Text style={s.btnGhostText}>Undo</Text>
           </Pressable>
 
           <Pressable
-            onPress={() => padRef.current?.readSignature()}
+            onPress={snapshotToBase64}
             style={[s.btn, s.btnPrimary, s.equalBtn]}
             hitSlop={6}
           >
-            <Text style={s.btnPrimaryText}>{persisted ? 'Update' : 'Save'}</Text>
+            <Text style={s.btnPrimaryText}>{value ? 'Update' : 'Save'}</Text>
           </Pressable>
         </View>
 
         <View style={s.rightGroup}>
           <Pressable
-            onPress={() => captureThen(() => setSizeIdx((i) => (i + 1) % PEN_SIZES.length))}
+            onPress={() => setSizeIdx((i) => (i + 1) % PEN_SIZES.length)}
             style={[s.btn, s.btnGhost, s.equalBtn]}
             hitSlop={6}
           >
-            <Text style={s.btnGhostText}>Pen {penSize}px</Text>
+            <Text style={s.btnGhostText}>Pen {PEN_SIZES[sizeIdx]}px</Text>
           </Pressable>
 
           <Pressable
-            onPress={() => captureThen(() => setPenIdx((i) => (i + 1) % PEN_COLORS.length))}
+            onPress={() => setPenIdx((i) => (i + 1) % PEN_COLORS.length)}
             style={[s.swatch, { borderColor: 'rgba(255,255,255,0.35)' }]}
             hitSlop={6}
           >
-            <View style={[s.dot, { backgroundColor: penColor }]} />
+            <View style={[s.dot, { backgroundColor: PEN_COLORS[penIdx] }]} />
           </Pressable>
         </View>
       </View>
@@ -327,6 +283,7 @@ const s = StyleSheet.create({
     marginTop: 8,
   },
   canvas: { width: '100%' },
+
   toolbar: {
     height: 48,
     paddingHorizontal: 10,
