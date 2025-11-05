@@ -44,8 +44,14 @@ export async function signUpWithEmail(
   return cred.user;
 }
 
+// Original export
 export function signInWithEmailPassword(email: string, password: string) {
   return signInWithEmailAndPassword(auth, email, password);
+}
+
+// ✅ Alias to match existing imports elsewhere (e.g., LoginScreen)
+export function signInWithEmail(email: string, password: string) {
+  return signInWithEmailPassword(email, password);
 }
 
 export function signOutUser() {

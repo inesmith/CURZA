@@ -38,10 +38,10 @@ import { getChaptersMeta } from '../utils/chaptersMeta';
 // Per-chapter topics util
 import { getTopicsForChapter, type TopicSection } from '../utils/chapterTopics';
 
-// ✅ Your top toast modal
-import StatusModal from '../ui/StatusModal';
+// 🔔 global notice (same modal style as Login)
+import { useNotice } from '../contexts/NoticeProvider';
 
-// ✅ PDF deps (Expo)
+// 📄 PDF deps (Expo)
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
@@ -75,12 +75,10 @@ export default function SummariesScreen() {
   // examples loading
   const [examplesLoading, setExamplesLoading] = useState(false);
 
-  // ✅ toast state
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastMsg, setToastMsg] = useState('');
-  const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
+  // notice
+  const { show } = useNotice();
 
-  // —— helpers ——
+  // —— local helpers (self-contained for this screen) ——
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
     if (!raw) return 'CAPS';
@@ -148,7 +146,7 @@ export default function SummariesScreen() {
 
   // Pull profile
   useEffect(() => {
-    const auth = GetAuthSafe();
+    const auth = getAuth();
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) return;
 
@@ -206,7 +204,7 @@ export default function SummariesScreen() {
 
   const handleBuildQuiz = async () => {
     try {
-      await createTestAI({
+      const res = await createTestAI({
         subject: subject || '—',
         grade,
         mode: 'section',
@@ -214,6 +212,7 @@ export default function SummariesScreen() {
         count: 10,
         timed: false,
       });
+      console.log('createTestAI(section) ->', res.data);
     } catch (err) {
       console.log('createTestAI(section) error:', err);
     }
@@ -303,7 +302,7 @@ export default function SummariesScreen() {
       // Set topics (with key concepts if present)
       setTopics(normalized);
 
-      // progress tick (optional)
+      // progress tick (optional to keep)
       try {
         await incSummariesStudied();
       } catch (e) {
@@ -316,12 +315,9 @@ export default function SummariesScreen() {
     }
   };
 
-  // ✅ Generate more EXAMPLES (fixed: true delta check & single state commit)
+  // Generate more EXAMPLES across all current topics (AI + fallback) + global notice
   const handleGenerateExamples = async () => {
-    if (!subject || chapter === '-' || topicsRef.current.length === 0) {
-      toast('Choose a subject and chapter first.', 'error');
-      return;
-    }
+    if (!subject || chapter === '-' || topicsRef.current.length === 0) return;
 
     const chapKey = String(chapter);
     const chapName =
@@ -330,13 +326,12 @@ export default function SummariesScreen() {
       '';
 
     setExamplesLoading(true);
-
-    // Work from a snapshot to avoid racing state updates
-    const current = topicsRef.current;
-    let hadNewAcrossAnyTopic = false;
-    const nextTopics: TopicSection[] = [...current];
+    let anyUpdated = false;
 
     try {
+      // Work on a snapshot to avoid race conditions
+      const current = topicsRef.current;
+
       await Promise.all(
         current.map(async (t, idx) => {
           const title = t.title || `Topic ${idx + 1}`;
@@ -362,12 +357,12 @@ export default function SummariesScreen() {
               [];
 
             incoming = (Array.isArray(rawArr) ? rawArr : [])
-              .map((x) => (typeof x === 'string' ? x : (x?.text ?? x?.step ?? x?.title ?? '')))
+              .map((x) => typeof x === 'string' ? x : (x?.text ?? x?.step ?? x?.title ?? ''))
               .map((s) => stripLead(String(s)))
               .filter(Boolean)
               .filter((s) => s.length <= 200);
           } catch (e) {
-            // silent fallback
+            console.log('generate examples error for topic:', title, e);
           }
 
           if (!incoming || incoming.length === 0) {
@@ -375,32 +370,45 @@ export default function SummariesScreen() {
           }
           if (!incoming || incoming.length === 0) return;
 
+          // Merge into a new topics array once after all promises complete
           const before = Array.isArray(current[idx]?.exampleSteps) ? current[idx].exampleSteps : [];
-          const beforeSet = new Set(before.map((x) => String(x).trim().toLowerCase()));
-          const newOnly = incoming.filter((x) => !beforeSet.has(String(x).trim().toLowerCase()));
-
-          if (newOnly.length > 0) hadNewAcrossAnyTopic = true;
-
-          const merged = dedupe([...before, ...newOnly]).slice(0, 10);
-          nextTopics[idx] = {
-            ...current[idx],
-            exampleSteps: merged,
-          };
+          const merged = dedupe([...before, ...incoming]).slice(0, 10);
+          if (merged.length > before.length) {
+            anyUpdated = true;
+            current[idx] = { ...current[idx], exampleSteps: merged };
+          }
         })
       );
+
+      // Commit state once
+      setTopics([...topicsRef.current]);
+
+      // ✅ notices
+      if (anyUpdated) {
+        show("New example steps generated for this chapter’s topics.", "success");
+      } else {
+        show("No new examples available right now.", "error");
+      }
+    } catch (e) {
+      show("Couldn't generate examples at the moment.", "error");
     } finally {
       setExamplesLoading(false);
-      setTopics(nextTopics);
-
-      if (hadNewAcrossAnyTopic) {
-        toast("New example steps generated for this chapter’s topics.", 'success');
-      } else {
-        toast("No new examples available right now.", 'error');
-      }
     }
   };
 
-  // ✅ PDF: Build simple HTML from current state
+  // —— PDF helpers ——
+  const escapeHtml = (s: string) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const makePdfName = () => {
+    const subj = (subject || 'Subject').replace(/[^a-z0-9]+/gi, '_');
+    const chap = chapter !== '-' ? `Ch${chapter}` : 'Summary';
+    return `${subj}_${chap}.pdf`;
+  };
+
   const buildSummaryHtml = (): string => {
     const subj = subject || 'Subject';
     const chapNo = chapter !== '-' ? String(chapter) : '';
@@ -459,28 +467,26 @@ export default function SummariesScreen() {
 </html>`;
   };
 
-  // ✅ PDF: Save helper (Android SAF, iOS Share; web: open)
   const savePdfFile = async (pdfUri: string, filename: string) => {
     try {
       if (Platform.OS === 'android') {
-        // Prefer SAF so the user can pick Downloads (scoped storage)
-        const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        // SAF preferred: user chooses Downloads etc.
+        const FS: any = FileSystem as any;
+        const perm = await FS.StorageAccessFramework.requestDirectoryPermissionsAsync();
         if (perm.granted) {
-          const base64 = await FileSystem.readAsStringAsync(pdfUri, { encoding: FileSystem.EncodingType.Base64 });
-          const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          const base64 = await FileSystem.readAsStringAsync(pdfUri, { encoding: 'base64' });
+          const fileUri = await FS.StorageAccessFramework.createFileAsync(
             perm.directoryUri,
             filename,
             'application/pdf'
           );
-          await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+          await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: 'base64' });
           return { savedUri: fileUri, mode: 'saf' as const };
         }
-        // Fallback: share sheet
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(pdfUri, { mimeType: 'application/pdf', dialogTitle: filename });
           return { savedUri: pdfUri, mode: 'share' as const };
         }
-        // Last resort: keep in cache
         return { savedUri: pdfUri, mode: 'cache' as const };
       } else if (Platform.OS === 'ios') {
         if (await Sharing.isAvailableAsync()) {
@@ -489,16 +495,8 @@ export default function SummariesScreen() {
         }
         return { savedUri: pdfUri, mode: 'cache' as const };
       } else {
-        // Web: open a new tab with the PDF if possible
-        // Expo web returns a local blob URL; Sharing isn’t available
-        // We can try to trigger the browser download by navigating to the blob URL.
-        try {
-          // NOTE: On web, Print.printToFileAsync may inline-open.
-          // We simply surface success.
-          return { savedUri: pdfUri, mode: 'web' as const };
-        } catch {
-          return { savedUri: pdfUri, mode: 'web' as const };
-        }
+        // Web: let the browser open/download the blob
+        return { savedUri: pdfUri, mode: 'web' as const };
       }
     } catch (e) {
       console.log('savePdfFile error:', e);
@@ -506,49 +504,30 @@ export default function SummariesScreen() {
     }
   };
 
-  // ✅ PDF: Generate & Save
   const generateAndSavePdf = async () => {
     if (!subject || chapter === '-' || topicsRef.current.length === 0) {
-      toast('Choose a subject and chapter first.', 'error');
+      show('Choose a subject and chapter first.', 'error');
       return;
     }
     try {
       const html = buildSummaryHtml();
-      const file = await Print.printToFileAsync({ html }); // { uri }
+      const file = await Print.printToFileAsync({ html }); // => { uri }
       const filename = makePdfName();
       const result = await savePdfFile(file.uri, filename);
 
       if (result.mode === 'saf') {
-        toast(`Saved to selected folder as ${filename}.`, 'success');
+        show(`Saved to selected folder as ${filename}.`, 'success');
       } else if (result.mode === 'share') {
-        toast('PDF ready. Shared successfully (or saved from the share sheet).', 'success');
+        show('PDF ready. Shared successfully (or save from the share sheet).', 'success');
       } else if (result.mode === 'web') {
-        toast('PDF generated. Your browser should open/download it.', 'success');
+        show('PDF generated. Your browser should open/download it.', 'success');
       } else {
-        toast('PDF generated (saved in app cache).', 'success');
+        show('PDF generated (saved in app cache).', 'success');
       }
     } catch (e) {
       console.log('generateAndSavePdf error:', e);
-      toast('Could not generate or save the PDF right now.', 'error');
+      show('Could not generate or save the PDF right now.', 'error');
     }
-  };
-
-  const makePdfName = () => {
-    const subj = (subject || 'Subject').replace(/[^a-z0-9]+/gi, '_');
-    const chap = chapter !== '-' ? `Ch${chapter}` : 'Summary';
-    return `${subj}_${chap}.pdf`;
-  };
-
-  const escapeHtml = (s: string) =>
-    String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-  const toast = (msg: string, v: 'success' | 'error' = 'success') => {
-    setToastMsg(msg);
-    setToastVariant(v);
-    setToastVisible(true);
   };
 
   // Displays
@@ -564,6 +543,7 @@ export default function SummariesScreen() {
          '')
       : '';
 
+  // CHAPTER NAME IN UPPERCASE (grey bar)
   const currentChapterNameUpper = currentChapterName ? currentChapterName.toUpperCase() : '';
 
   const topicBarText =
@@ -573,14 +553,6 @@ export default function SummariesScreen() {
 
   return (
     <View style={s.page}>
-      {/* ✅ Top toast (StatusModal) */}
-      <StatusModal
-        visible={toastVisible}
-        message={toastMsg}
-        variant={toastVariant}
-        onClose={() => setToastVisible(false)}
-      />
-
       <View style={s.imageWrapper}>
         {/* Left rail artwork */}
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -643,8 +615,19 @@ export default function SummariesScreen() {
         >
           {/* Quick link */}
           <View style={[s.tabTextWrapper, s.posSummaries]}>
-            <Pressable onPress={() => navigation.navigate('Dashboard')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
+            <Pressable
+              onPress={() => {
+                const state: any = (navigation as any)?.getState?.();
+                const routeNames: string[] = state?.routeNames ?? [];
+                if (routeNames.includes('Dashboard')) {
+                  navigation.navigate('Dashboard');
+                } else {
+                  console.log('Dashboard route not available in this navigator yet.');
+                }
+              }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={[s.tabText, s.summariesTab]}>BACK TO DASHBOARD</Text>
             </Pressable>
           </View>
 
@@ -801,9 +784,9 @@ export default function SummariesScreen() {
                     onPress={async () => {
                       try {
                         await incChaptersCovered();
-                        toast('Chapter marked as revised. Progress updated.', 'success');
+                        show('Chapter marked as revised. Progress updated.', 'success');
                       } catch (e) {
-                        toast('Could not update progress right now.', 'error');
+                        show('Could not update progress right now.', 'error');
                       }
                     }}
                   >
@@ -862,11 +845,6 @@ export default function SummariesScreen() {
       </View>
     </View>
   );
-}
-
-function GetAuthSafe() {
-  // Some dev envs hot-reload before firebase init; this guards against undefined.
-  try { return getAuth(); } catch { return ({} as any); }
 }
 
 const s = StyleSheet.create({
@@ -1007,7 +985,7 @@ const s = StyleSheet.create({
   },
   chev: { color: '#FFFFFF', fontSize: 18, marginLeft: 8 },
 
-  // Dropdowns
+  // Dropdowns (shared with Login styles)
   ddBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',

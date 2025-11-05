@@ -477,17 +477,7 @@ const s = StyleSheet.create({
   checkText: { color: '#E5E7EB', fontFamily: 'AlumniSans_500Medium', fontSize: 20 },
 
   cta: {
-    backgroundColor: '#FACC15',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 32,
-    shadowColor: '#0B1220',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    height: 48,
-  },
+    backgroundColor: '#FACC15', borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 32, shadowColor: '#0B1220', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, height: 48, },
   ctaText: {
     color: '#1F2937',
     fontFamily: 'Antonio_700Bold',
