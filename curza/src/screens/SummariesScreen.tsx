@@ -67,6 +67,9 @@ export default function SummariesScreen() {
   // examples loading
   const [examplesLoading, setExamplesLoading] = useState(false);
 
+  // ✅ mark-as-revised loading
+  const [markLoading, setMarkLoading] = useState(false);
+
   // ✅ toast state
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
@@ -206,7 +209,7 @@ export default function SummariesScreen() {
         count: 10,
         timed: false,
       });
-      console.log('createTestAI(section) ->', res.data);
+    console.log('createTestAI(section) ->', res.data);
     } catch (err) {
       console.log('createTestAI(section) error:', err);
     }
@@ -390,6 +393,34 @@ export default function SummariesScreen() {
         setToastVariant('error');
         setToastVisible(true);
       }
+    }
+  };
+
+  // ✅ Mark chapter as revised → update progress, toast, then open Dashboard
+  const handleMarkRevised = async () => {
+    if (!subject || chapter === '-' ) {
+      setToastMsg('Choose a subject and chapter first.');
+      setToastVariant('error');
+      setToastVisible(true);
+      return;
+    }
+    if (markLoading) return;
+
+    try {
+      setMarkLoading(true);
+      await incChaptersCovered(); // uses your existing helper (subject-aware in backend)
+      setToastMsg('Chapter marked as revised. Progress updated.');
+      setToastVariant('success');
+      setToastVisible(true);
+
+      // Navigate so Dashboard “My Progress → Chapters Covered” loads live values
+      navigation.navigate('Dashboard');
+    } catch (e) {
+      setToastMsg('Could not update progress right now.');
+      setToastVariant('error');
+      setToastVisible(true);
+    } finally {
+      setMarkLoading(false);
     }
   };
 
@@ -638,13 +669,15 @@ export default function SummariesScreen() {
                   <Pressable style={s.yellowBtn} onPress={() => console.log('Download Summary')}>
                     <Text style={s.yellowBtnText}>Download Summary</Text>
                   </Pressable>
+
                   <Pressable
-                    style={s.yellowBtn}
-                    onPress={async () => {
-                      try { await incChaptersCovered(); } catch (e) { console.log(e); }
-                    }}
+                    style={[s.yellowBtn, (markLoading || !subject || chapter === '-') && { opacity: 0.7 }]}
+                    onPress={handleMarkRevised}
+                    disabled={markLoading}
                   >
-                    <Text style={s.yellowBtnText}>Mark Chapter as Revised</Text>
+                    <Text style={s.yellowBtnText}>
+                      {markLoading ? 'Updating…' : 'Mark Chapter as Revised'}
+                    </Text>
                   </Pressable>
                 </View>
 
