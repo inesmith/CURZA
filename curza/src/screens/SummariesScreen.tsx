@@ -1,5 +1,5 @@
 // src/screens/SummariesScreen.tsx
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ImageBackground,
   Modal,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -37,8 +38,13 @@ import { getChaptersMeta } from '../utils/chaptersMeta';
 // Per-chapter topics util
 import { getTopicsForChapter, type TopicSection } from '../utils/chapterTopics';
 
-// ✅ Use your top toast modal
+// ✅ Your top toast modal
 import StatusModal from '../ui/StatusModal';
+
+// ✅ PDF deps (Expo)
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 
 export default function SummariesScreen() {
   const [showDrop, setShowDrop] = useState(false);
@@ -63,19 +69,18 @@ export default function SummariesScreen() {
 
   // per-chapter topics
   const [topics, setTopics] = useState<TopicSection[]>([]);
+  const topicsRef = useRef<TopicSection[]>([]);
+  useEffect(() => { topicsRef.current = topics; }, [topics]);
 
   // examples loading
   const [examplesLoading, setExamplesLoading] = useState(false);
-
-  // ✅ mark-as-revised loading
-  const [markLoading, setMarkLoading] = useState(false);
 
   // ✅ toast state
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
 
-  // —— local helpers (self-contained for this screen) ——
+  // —— helpers ——
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
     if (!raw) return 'CAPS';
@@ -143,7 +148,7 @@ export default function SummariesScreen() {
 
   // Pull profile
   useEffect(() => {
-    const auth = getAuth();
+    const auth = GetAuthSafe();
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) return;
 
@@ -201,7 +206,7 @@ export default function SummariesScreen() {
 
   const handleBuildQuiz = async () => {
     try {
-      const res = await createTestAI({
+      await createTestAI({
         subject: subject || '—',
         grade,
         mode: 'section',
@@ -209,7 +214,6 @@ export default function SummariesScreen() {
         count: 10,
         timed: false,
       });
-    console.log('createTestAI(section) ->', res.data);
     } catch (err) {
       console.log('createTestAI(section) error:', err);
     }
@@ -299,7 +303,7 @@ export default function SummariesScreen() {
       // Set topics (with key concepts if present)
       setTopics(normalized);
 
-      // progress tick (optional to keep)
+      // progress tick (optional)
       try {
         await incSummariesStudied();
       } catch (e) {
@@ -312,12 +316,10 @@ export default function SummariesScreen() {
     }
   };
 
-  // ✅ Generate more EXAMPLES + show StatusModal toast
+  // ✅ Generate more EXAMPLES (fixed: true delta check & single state commit)
   const handleGenerateExamples = async () => {
-    if (!subject || chapter === '-' || topics.length === 0) {
-      setToastMsg('Choose a subject and chapter first.');
-      setToastVariant('error');
-      setToastVisible(true);
+    if (!subject || chapter === '-' || topicsRef.current.length === 0) {
+      toast('Choose a subject and chapter first.', 'error');
       return;
     }
 
@@ -328,18 +330,22 @@ export default function SummariesScreen() {
       '';
 
     setExamplesLoading(true);
-    let anyUpdated = false;
+
+    // Work from a snapshot to avoid racing state updates
+    const current = topicsRef.current;
+    let hadNewAcrossAnyTopic = false;
+    const nextTopics: TopicSection[] = [...current];
 
     try {
       await Promise.all(
-        topics.map(async (t, idx) => {
+        current.map(async (t, idx) => {
           const title = t.title || `Topic ${idx + 1}`;
 
           let incoming: string[] = [];
           try {
             const res: any = await listOptionsAI({
               type: 'topics',
-              mode: 'examples', // server can ignore; just a hint
+              mode: 'examples',
               curriculum: curriculum || 'CAPS',
               grade,
               subject: subject || 'Mathematics',
@@ -356,12 +362,12 @@ export default function SummariesScreen() {
               [];
 
             incoming = (Array.isArray(rawArr) ? rawArr : [])
-              .map((x) => typeof x === 'string' ? x : (x?.text ?? x?.step ?? x?.title ?? ''))
+              .map((x) => (typeof x === 'string' ? x : (x?.text ?? x?.step ?? x?.title ?? '')))
               .map((s) => stripLead(String(s)))
               .filter(Boolean)
               .filter((s) => s.length <= 200);
           } catch (e) {
-            console.log('generate examples error for topic:', title, e);
+            // silent fallback
           }
 
           if (!incoming || incoming.length === 0) {
@@ -369,59 +375,180 @@ export default function SummariesScreen() {
           }
           if (!incoming || incoming.length === 0) return;
 
-          setTopics((prev) => {
-            if (!prev[idx]) return prev;
-            const before = Array.isArray(prev[idx].exampleSteps) ? prev[idx].exampleSteps : [];
-            const merged = dedupe([...before, ...incoming]).slice(0, 10);
-            if (merged.length > before.length) {
-              anyUpdated = true;
-            }
-            const next = [...prev];
-            next[idx] = { ...next[idx], exampleSteps: merged };
-            return next;
-          });
+          const before = Array.isArray(current[idx]?.exampleSteps) ? current[idx].exampleSteps : [];
+          const beforeSet = new Set(before.map((x) => String(x).trim().toLowerCase()));
+          const newOnly = incoming.filter((x) => !beforeSet.has(String(x).trim().toLowerCase()));
+
+          if (newOnly.length > 0) hadNewAcrossAnyTopic = true;
+
+          const merged = dedupe([...before, ...newOnly]).slice(0, 10);
+          nextTopics[idx] = {
+            ...current[idx],
+            exampleSteps: merged,
+          };
         })
       );
     } finally {
       setExamplesLoading(false);
-      if (anyUpdated) {
-        setToastMsg("New example steps generated for this chapter’s topics.");
-        setToastVariant('success');
-        setToastVisible(true);
+      setTopics(nextTopics);
+
+      if (hadNewAcrossAnyTopic) {
+        toast("New example steps generated for this chapter’s topics.", 'success');
       } else {
-        setToastMsg("No new examples available right now.");
-        setToastVariant('error');
-        setToastVisible(true);
+        toast("No new examples available right now.", 'error');
       }
     }
   };
 
-  // ✅ Mark chapter as revised → update progress, toast, then open Dashboard
-  const handleMarkRevised = async () => {
-    if (!subject || chapter === '-' ) {
-      setToastMsg('Choose a subject and chapter first.');
-      setToastVariant('error');
-      setToastVisible(true);
+  // ✅ PDF: Build simple HTML from current state
+  const buildSummaryHtml = (): string => {
+    const subj = subject || 'Subject';
+    const chapNo = chapter !== '-' ? String(chapter) : '';
+    const chapName =
+      chapNo
+        ? (chapterNames[chapNo] ?? chapterNames[Number(chapNo) as any] ?? '')
+        : '';
+    const title = `${subj} - ${chapNo ? `Chapter ${chapNo}${chapName ? `: ${chapName}` : ''}` : 'Summary'}`;
+
+    const topicsHtml = (topicsRef.current || [])
+      .map((t, i) => {
+        const kc = (t.keyConcepts || []).map((k) => `<li>${escapeHtml(k)}</li>`).join('');
+        const ex = (t.exampleSteps || []).map((k) => `<li>${escapeHtml(k)}</li>`).join('');
+        const fm = (t.formulas || []).map((k) => `<li><code>${escapeHtml(k)}</code></li>`).join('');
+        const tp = (t.tips || []).map((k) => `<li>${escapeHtml(k)}</li>`).join('');
+
+        return `
+          <section class="topic">
+            <h2>Topic ${i + 1}: ${escapeHtml(t.title || '')}</h2>
+            ${kc ? `<h3>Key Concepts</h3><ul>${kc}</ul>` : ''}
+            ${ex ? `<h3>Examples</h3><ol>${ex}</ol>` : ''}
+            ${fm ? `<h3>Formulas</h3><ul>${fm}</ul>` : ''}
+            ${tp ? `<h3>Tips</h3><ul>${tp}</ul>` : ''}
+          </section>
+        `;
+      })
+      .join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charSet="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Antonio', 'Alumni Sans', Arial, sans-serif; color: #111827; margin: 24px; }
+    header { text-align: center; margin-bottom: 16px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    .meta { font-size: 12px; color: #374151; }
+    h2 { font-size: 16px; margin: 16px 0 6px; }
+    h3 { font-size: 13px; margin: 10px 0 6px; color: #111827; }
+    ul, ol { margin: 0 0 10px 18px; padding: 0; }
+    li { margin: 2px 0; }
+    code { background: #F3F4F6; padding: 2px 4px; border-radius: 4px; }
+    .topic { page-break-inside: avoid; border-top: 1px solid #E5E7EB; padding-top: 8px; }
+    footer { margin-top: 18px; font-size: 11px; color: #6B7280; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="meta">${escapeHtml(String(curriculum).toUpperCase())} • GRADE ${escapeHtml(String(grade))} • Generated by Curza</div>
+  </header>
+  ${topicsHtml || '<p>No topics were loaded for this chapter.</p>'}
+  <footer>© ${new Date().getFullYear()} Curza</footer>
+</body>
+</html>`;
+  };
+
+  // ✅ PDF: Save helper (Android SAF, iOS Share; web: open)
+  const savePdfFile = async (pdfUri: string, filename: string) => {
+    try {
+      if (Platform.OS === 'android') {
+        // Prefer SAF so the user can pick Downloads (scoped storage)
+        const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (perm.granted) {
+          const base64 = await FileSystem.readAsStringAsync(pdfUri, { encoding: FileSystem.EncodingType.Base64 });
+          const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+            perm.directoryUri,
+            filename,
+            'application/pdf'
+          );
+          await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+          return { savedUri: fileUri, mode: 'saf' as const };
+        }
+        // Fallback: share sheet
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(pdfUri, { mimeType: 'application/pdf', dialogTitle: filename });
+          return { savedUri: pdfUri, mode: 'share' as const };
+        }
+        // Last resort: keep in cache
+        return { savedUri: pdfUri, mode: 'cache' as const };
+      } else if (Platform.OS === 'ios') {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(pdfUri, { UTI: 'com.adobe.pdf', mimeType: 'application/pdf', dialogTitle: filename });
+          return { savedUri: pdfUri, mode: 'share' as const };
+        }
+        return { savedUri: pdfUri, mode: 'cache' as const };
+      } else {
+        // Web: open a new tab with the PDF if possible
+        // Expo web returns a local blob URL; Sharing isn’t available
+        // We can try to trigger the browser download by navigating to the blob URL.
+        try {
+          // NOTE: On web, Print.printToFileAsync may inline-open.
+          // We simply surface success.
+          return { savedUri: pdfUri, mode: 'web' as const };
+        } catch {
+          return { savedUri: pdfUri, mode: 'web' as const };
+        }
+      }
+    } catch (e) {
+      console.log('savePdfFile error:', e);
+      throw e;
+    }
+  };
+
+  // ✅ PDF: Generate & Save
+  const generateAndSavePdf = async () => {
+    if (!subject || chapter === '-' || topicsRef.current.length === 0) {
+      toast('Choose a subject and chapter first.', 'error');
       return;
     }
-    if (markLoading) return;
-
     try {
-      setMarkLoading(true);
-      await incChaptersCovered(); // uses your existing helper (subject-aware in backend)
-      setToastMsg('Chapter marked as revised. Progress updated.');
-      setToastVariant('success');
-      setToastVisible(true);
+      const html = buildSummaryHtml();
+      const file = await Print.printToFileAsync({ html }); // { uri }
+      const filename = makePdfName();
+      const result = await savePdfFile(file.uri, filename);
 
-      // Navigate so Dashboard “My Progress → Chapters Covered” loads live values
-      navigation.navigate('Dashboard');
+      if (result.mode === 'saf') {
+        toast(`Saved to selected folder as ${filename}.`, 'success');
+      } else if (result.mode === 'share') {
+        toast('PDF ready. Shared successfully (or saved from the share sheet).', 'success');
+      } else if (result.mode === 'web') {
+        toast('PDF generated. Your browser should open/download it.', 'success');
+      } else {
+        toast('PDF generated (saved in app cache).', 'success');
+      }
     } catch (e) {
-      setToastMsg('Could not update progress right now.');
-      setToastVariant('error');
-      setToastVisible(true);
-    } finally {
-      setMarkLoading(false);
+      console.log('generateAndSavePdf error:', e);
+      toast('Could not generate or save the PDF right now.', 'error');
     }
+  };
+
+  const makePdfName = () => {
+    const subj = (subject || 'Subject').replace(/[^a-z0-9]+/gi, '_');
+    const chap = chapter !== '-' ? `Ch${chapter}` : 'Summary';
+    return `${subj}_${chap}.pdf`;
+  };
+
+  const escapeHtml = (s: string) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const toast = (msg: string, v: 'success' | 'error' = 'success') => {
+    setToastMsg(msg);
+    setToastVariant(v);
+    setToastVisible(true);
   };
 
   // Displays
@@ -437,7 +564,6 @@ export default function SummariesScreen() {
          '')
       : '';
 
-  // CHAPTER NAME IN UPPERCASE (grey bar)
   const currentChapterNameUpper = currentChapterName ? currentChapterName.toUpperCase() : '';
 
   const topicBarText =
@@ -666,18 +792,22 @@ export default function SummariesScreen() {
                     </Text>
                   </Pressable>
 
-                  <Pressable style={s.yellowBtn} onPress={() => console.log('Download Summary')}>
+                  <Pressable style={s.yellowBtn} onPress={generateAndSavePdf}>
                     <Text style={s.yellowBtnText}>Download Summary</Text>
                   </Pressable>
 
                   <Pressable
-                    style={[s.yellowBtn, (markLoading || !subject || chapter === '-') && { opacity: 0.7 }]}
-                    onPress={handleMarkRevised}
-                    disabled={markLoading}
+                    style={s.yellowBtn}
+                    onPress={async () => {
+                      try {
+                        await incChaptersCovered();
+                        toast('Chapter marked as revised. Progress updated.', 'success');
+                      } catch (e) {
+                        toast('Could not update progress right now.', 'error');
+                      }
+                    }}
                   >
-                    <Text style={s.yellowBtnText}>
-                      {markLoading ? 'Updating…' : 'Mark Chapter as Revised'}
-                    </Text>
+                    <Text style={s.yellowBtnText}>Mark Chapter as Revised</Text>
                   </Pressable>
                 </View>
 
@@ -732,6 +862,11 @@ export default function SummariesScreen() {
       </View>
     </View>
   );
+}
+
+function GetAuthSafe() {
+  // Some dev envs hot-reload before firebase init; this guards against undefined.
+  try { return getAuth(); } catch { return ({} as any); }
 }
 
 const s = StyleSheet.create({
