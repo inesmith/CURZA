@@ -34,7 +34,7 @@ import { incSummariesStudied, incChaptersCovered } from '../utils/progress';
 // AI chapters util (returns total + names)
 import { getChaptersMeta } from '../utils/chaptersMeta';
 
-//  Per-chapter topics util
+// Per-chapter topics util
 import { getTopicsForChapter, type TopicSection } from '../utils/chapterTopics';
 
 export default function SummariesScreen() {
@@ -61,7 +61,7 @@ export default function SummariesScreen() {
   // per-chapter topics
   const [topics, setTopics] = useState<TopicSection[]>([]);
 
-  // helpers
+  // —— helpers ——
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
     if (!raw) return 'CAPS';
@@ -79,6 +79,24 @@ export default function SummariesScreen() {
       .split(/\s+/)
       .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
+
+  // Fallback topics generator (used if API returns nothing or errors)
+  const defaultTopicsForChapter = (chapName?: string): TopicSection[] => {
+    const base = [
+      'Overview & Key Ideas',
+      'Core Definitions',
+      'Formulas & Rules',
+      'Worked Example',
+      'Common Mistakes & Tips',
+    ];
+    return base.map((title) => ({
+      title,
+      keyConcepts: [],
+      exampleSteps: [],
+      formulas: [],
+      tips: [],
+    }));
+  };
 
   // Build dynamic chapter options 1..N
   const chapterOptions = useMemo(() => {
@@ -179,7 +197,7 @@ export default function SummariesScreen() {
     }
   };
 
-  // Select chapter → fetch topics (and then count summary)
+  // Select chapter → fetch topics (already hydrated with keyConcepts)
   const onSelectChapter = async (n: string) => {
     setChapter(n);
     setShowChapterDrop(false);
@@ -194,7 +212,7 @@ export default function SummariesScreen() {
         chapterNames[Number(chapNum) as any] ??
         '';
 
-      // If missing, re-fetch meta once to hydrate names (avoids generic "Intro concepts")
+      // If missing, re-fetch meta once to hydrate names
       if (!chapName) {
         try {
           const meta2 = await getChaptersMeta({ curriculum, grade, subject: subject || '' });
@@ -206,34 +224,54 @@ export default function SummariesScreen() {
         }
       }
 
-      const t = await getTopicsForChapter({
-        curriculum,
-        grade,
-        subject: subject || '',
-        chapter: chapNum,
-        chapterName: chapName,
-      });
+      // Attempt primary topics load (these now include keyConcepts)
+      let t: any = [];
+      try {
+        t = await getTopicsForChapter({
+          curriculum,
+          grade,
+          subject: subject || '',
+          chapter: chapNum,
+          chapterName: chapName,
+        });
+      } catch (err) {
+        console.log('getTopicsForChapter error — using fallback:', err);
+        t = [];
+      }
 
       // Normalize to ensure each topic has a `.title`
-      const norm = (Array.isArray(t) ? t : []).map((x: any, i: number) => {
+      let normalized: TopicSection[] = (Array.isArray(t) ? t : []).map((x: any, i: number) => {
         const title =
           typeof x === 'string'
             ? x
             : x?.title ?? x?.name ?? x?.topic ?? x?.heading ?? `Topic ${i + 1}`;
-        return { ...x, title };
+        return {
+          title,
+          keyConcepts: Array.isArray(x?.keyConcepts) ? x.keyConcepts : [],
+          exampleSteps: Array.isArray(x?.exampleSteps) ? x.exampleSteps : [],
+          formulas: Array.isArray(x?.formulas) ? x.formulas : [],
+          tips: Array.isArray(x?.tips) ? x.tips : [],
+        } as TopicSection;
       });
 
-      setTopics(norm);
+      // Fallback if nothing came back
+      if (!normalized.length) {
+        normalized = defaultTopicsForChapter(chapName);
+      }
 
-      // Increment only after a successful topics load (prevents “stuck at 1”)
+      // Set topics (with key concepts if present)
+      setTopics(normalized);
+
+      // progress tick (optional to keep)
       try {
         await incSummariesStudied();
       } catch (e) {
         console.log('incSummariesStudied after topics failed:', e);
       }
     } catch (e) {
-      console.log('getTopicsForChapter failed:', e);
-      setTopics([]);
+      console.log('onSelectChapter failed — using fallback topics:', e);
+      const fallback = defaultTopicsForChapter();
+      setTopics(fallback);
     }
   };
 
@@ -250,9 +288,12 @@ export default function SummariesScreen() {
          '')
       : '';
 
+  // CHAPTER NAME IN UPPERCASE (grey bar)
+  const currentChapterNameUpper = currentChapterName ? currentChapterName.toUpperCase() : '';
+
   const topicBarText =
     subject && chapter !== '-'
-      ? `${subject.toUpperCase()} – CHAPTER ${chapter}${currentChapterName ? ` – ${currentChapterName}` : ''}`
+      ? `${subject.toUpperCase()} – CHAPTER ${chapter}${currentChapterNameUpper ? ` – ${currentChapterNameUpper}` : ''}`
       : 'SELECT YOUR SUBJECT & CHAPTER TO BEGIN';
 
   return (
@@ -480,7 +521,7 @@ export default function SummariesScreen() {
                     {/* Blue bar per topic */}
                     <View style={s.blueBar}>
                       <Text style={s.blueBarText}>
-                        {`Topic ${idx + 1}: ${(t as any)?.title}`}
+                        {`Topic ${idx + 1}: ${(t as any)?.title ?? ''}`}
                       </Text>
                     </View>
 
@@ -491,7 +532,7 @@ export default function SummariesScreen() {
                           concepts={Array.isArray((t as any)?.keyConcepts) ? (t as any).keyConcepts : []}
                         />
                         <ExampleSection
-                          exampleTitle="EXAMPLE"
+                          exampleTitle="EXAMPLES"
                           exampleSteps={Array.isArray((t as any)?.exampleSteps) ? (t as any).exampleSteps : []}
                         />
                       </View>
@@ -769,7 +810,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 0,
-    marginBottom: 14,
+    marginBottom: 0,
   },
   yellowBtn: {
     flex: 1,
@@ -801,6 +842,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
     justifyContent: 'flex-start',
+    marginTop: 20,
   },
   blueBarText: {
     color: '#FFFFFF',

@@ -27,7 +27,7 @@ const s = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 14,
-    minWidth: 380,
+    width: 380,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 10,

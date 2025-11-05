@@ -43,6 +43,8 @@ export const functions = getFunctions(app, 'us-central1');
 export const summariseAI  = httpsCallable(functions, 'summarise');
 export const scoreTestAI  = httpsCallable(functions, 'scoreTest');  // simple stub added on server
 export const createTestAI = httpsCallable(functions, 'buildTest');
+export const listOptionsAI = httpsCallable(functions, 'listOptionsAI');
+export const keyConcepts = httpsCallable(functions, 'keyConcepts');
 
 // --- 🔹 New: Typed helpers for AI lists ---
 type ListCtx = { curriculum: string; grade: string | number; subject: string };
