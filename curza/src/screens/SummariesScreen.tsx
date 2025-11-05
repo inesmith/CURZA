@@ -15,7 +15,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
 // AI callables
-import { summariseAI, createTestAI } from '../../firebase';
+import { summariseAI, createTestAI, listOptionsAI } from '../../firebase';
 
 // Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -36,6 +36,9 @@ import { getChaptersMeta } from '../utils/chaptersMeta';
 
 // Per-chapter topics util
 import { getTopicsForChapter, type TopicSection } from '../utils/chapterTopics';
+
+// ✅ Use your top toast modal
+import StatusModal from '../ui/StatusModal';
 
 export default function SummariesScreen() {
   const [showDrop, setShowDrop] = useState(false);
@@ -61,7 +64,15 @@ export default function SummariesScreen() {
   // per-chapter topics
   const [topics, setTopics] = useState<TopicSection[]>([]);
 
-  // —— helpers ——
+  // examples loading
+  const [examplesLoading, setExamplesLoading] = useState(false);
+
+  // ✅ toast state
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+  const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
+
+  // —— local helpers (self-contained for this screen) ——
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
     if (!raw) return 'CAPS';
@@ -79,6 +90,29 @@ export default function SummariesScreen() {
       .split(/\s+/)
       .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
       .join(' ');
+
+  const stripLead = (s: string) => String(s ?? '').replace(/^[•\-\d\.\)\s]+/, '').trim();
+
+  const dedupe = (arr: string[]) => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of arr) {
+      const k = String(t ?? '').trim().toLowerCase();
+      if (k && !seen.has(k)) { seen.add(k); out.push(String(t)); }
+    }
+    return out;
+  };
+
+  const buildFallbackExamples = (topic: string, chapName: string, subj: string) => {
+    const t = topic || 'Topic';
+    const c = chapName || (chapter ? `Chapter ${chapter}` : 'This Chapter');
+    const s = subj || subject || 'Subject';
+    return [
+      `Worked example: Apply a core rule of ${t} in ${s}.`,
+      `Step-by-step: Solve a typical ${t} question from ${c} with annotations.`,
+      `Check: Verify the answer and reflect on common mistakes in ${t}.`,
+    ];
+  };
 
   // Fallback topics generator (used if API returns nothing or errors)
   const defaultTopicsForChapter = (chapName?: string): TopicSection[] => {
@@ -275,6 +309,90 @@ export default function SummariesScreen() {
     }
   };
 
+  // ✅ Generate more EXAMPLES + show StatusModal toast
+  const handleGenerateExamples = async () => {
+    if (!subject || chapter === '-' || topics.length === 0) {
+      setToastMsg('Choose a subject and chapter first.');
+      setToastVariant('error');
+      setToastVisible(true);
+      return;
+    }
+
+    const chapKey = String(chapter);
+    const chapName =
+      chapterNames[chapKey] ??
+      chapterNames[Number(chapKey) as any] ??
+      '';
+
+    setExamplesLoading(true);
+    let anyUpdated = false;
+
+    try {
+      await Promise.all(
+        topics.map(async (t, idx) => {
+          const title = t.title || `Topic ${idx + 1}`;
+
+          let incoming: string[] = [];
+          try {
+            const res: any = await listOptionsAI({
+              type: 'topics',
+              mode: 'examples', // server can ignore; just a hint
+              curriculum: curriculum || 'CAPS',
+              grade,
+              subject: subject || 'Mathematics',
+              chapter: chapKey,
+              chapterName: chapName || '',
+              topic: title,
+              max: 6,
+            } as any);
+
+            const rawArr: any[] =
+              (res?.data?.examples as any[]) ??
+              (res?.data?.items as any[]) ??
+              (res?.data as any[]) ??
+              [];
+
+            incoming = (Array.isArray(rawArr) ? rawArr : [])
+              .map((x) => typeof x === 'string' ? x : (x?.text ?? x?.step ?? x?.title ?? ''))
+              .map((s) => stripLead(String(s)))
+              .filter(Boolean)
+              .filter((s) => s.length <= 200);
+          } catch (e) {
+            console.log('generate examples error for topic:', title, e);
+          }
+
+          if (!incoming || incoming.length === 0) {
+            incoming = buildFallbackExamples(title, chapName, subject);
+          }
+          if (!incoming || incoming.length === 0) return;
+
+          setTopics((prev) => {
+            if (!prev[idx]) return prev;
+            const before = Array.isArray(prev[idx].exampleSteps) ? prev[idx].exampleSteps : [];
+            const merged = dedupe([...before, ...incoming]).slice(0, 10);
+            if (merged.length > before.length) {
+              anyUpdated = true;
+            }
+            const next = [...prev];
+            next[idx] = { ...next[idx], exampleSteps: merged };
+            return next;
+          });
+        })
+      );
+    } finally {
+      setExamplesLoading(false);
+      if (anyUpdated) {
+        setToastMsg("New example steps generated for this chapter’s topics.");
+        setToastVariant('success');
+        setToastVisible(true);
+      } else {
+        setToastMsg("No new examples available right now.");
+        setToastVariant('error');
+        setToastVisible(true);
+      }
+    }
+  };
+
   // Displays
   const subjectDisplay = subject ? subject : 'CHOOSE';
   const chapterDisplay = !subject
@@ -298,6 +416,14 @@ export default function SummariesScreen() {
 
   return (
     <View style={s.page}>
+      {/* ✅ Top toast (StatusModal) */}
+      <StatusModal
+        visible={toastVisible}
+        message={toastMsg}
+        variant={toastVariant}
+        onClose={() => setToastVisible(false)}
+      />
+
       <View style={s.imageWrapper}>
         {/* Left rail artwork */}
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -499,9 +625,16 @@ export default function SummariesScreen() {
 
                 {/*  Three long yellow buttons */}
                 <View style={s.actionRow}>
-                  <Pressable style={s.yellowBtn} onPress={() => console.log('Generate More Examples')}>
-                    <Text style={s.yellowBtnText}>Generate More Examples</Text>
+                  <Pressable
+                    style={[s.yellowBtn, examplesLoading && { opacity: 0.7 }]}
+                    onPress={handleGenerateExamples}
+                    disabled={!subject || chapter === '-' || topics.length === 0 || examplesLoading}
+                  >
+                    <Text style={s.yellowBtnText}>
+                      {examplesLoading ? 'Generating…' : 'Generate More Examples'}
+                    </Text>
                   </Pressable>
+
                   <Pressable style={s.yellowBtn} onPress={() => console.log('Download Summary')}>
                     <Text style={s.yellowBtnText}>Download Summary</Text>
                   </Pressable>
