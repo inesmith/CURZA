@@ -566,6 +566,16 @@ export default function SummariesScreen() {
           <Image source={require('../../assets/SummariesDropTab.png')} style={s.dropTab} resizeMode="contain" />
         )}
 
+        {/* Dashboard rail label (moved higher) */}
+        <View style={[s.tabTextWrapper, s.posActive]}>
+          <Pressable
+            onPress={() => navigation.navigate('Dashboard')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={[s.tabText, s.dashboardTab]}>DASHBOARD</Text>
+          </Pressable>
+        </View>
+
         {/* Clickable rail labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable
@@ -613,23 +623,7 @@ export default function SummariesScreen() {
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
-          {/* Quick link */}
-          <View style={[s.tabTextWrapper, s.posSummaries]}>
-            <Pressable
-              onPress={() => {
-                const state: any = (navigation as any)?.getState?.();
-                const routeNames: string[] = state?.routeNames ?? [];
-                if (routeNames.includes('Dashboard')) {
-                  navigation.navigate('Dashboard');
-                } else {
-                  console.log('Dashboard route not available in this navigator yet.');
-                }
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Text style={[s.tabText, s.summariesTab]}>BACK TO DASHBOARD</Text>
-            </Pressable>
-          </View>
+          {/* (Removed the duplicate "Back to Dashboard" quick link here) */}
 
           {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
@@ -870,7 +864,7 @@ const s = StyleSheet.create({
   tabTextWrapper: { position: 'absolute', left: '4.5%', alignItems: 'center', zIndex: 6 },
 
   // Positions
-  posActive: { top: '15%' },
+  posActive: { top: '13%' }, // moved up from 15%
   posSummaries: { top: '22%' },
   posPractice: { top: '30%' },
   posResults: { top: '39%' },
@@ -887,7 +881,7 @@ const s = StyleSheet.create({
     marginLeft: -20,
     color: '#E5E7EB',
   },
-  dashboardTab: { fontWeight: 'bold', marginTop: -115 },
+  dashboardTab: { fontWeight: 'bold', marginTop: -45 },
   summariesTab: { opacity: 0.9, marginTop: -15 },
   summariesActive: { opacity: 1, marginTop: -15, fontWeight: '800', color: '#FACC15' },
   practiseTab: { opacity: 0.8, marginTop: 20 },
