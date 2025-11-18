@@ -406,10 +406,31 @@ export async function getTopicsForChapter(params: {
       );
 
       if (titles.length) {
-        console.log("[getTopicsForChapter] AI topics used:", titles);
+        // 🔹 NEW: use chapter number to select a different slice of titles per chapter
+        let selectedTitles = titles;
+        if (ch) {
+          const chNum = parseInt(ch, 10) || 1;
+          const perChapter = Math.min(4, Math.max(2, titles.length)); // 2–4 topics per chapter
+          const start = ((chNum - 1) * perChapter) % titles.length;
+          const end = start + perChapter;
+
+          if (end <= titles.length) {
+            selectedTitles = titles.slice(start, end);
+          } else {
+            selectedTitles = [
+              ...titles.slice(start),
+              ...titles.slice(0, end - titles.length),
+            ];
+          }
+        }
+
+        console.log(
+          "[getTopicsForChapter] AI topics used (chapter-specific slice):",
+          selectedTitles
+        );
 
         const hydrated = await Promise.all(
-          titles.map((title) =>
+          selectedTitles.map((title) =>
             hydrateTopicFromAI(
               { curriculum, grade: g, subject, chapter: ch, chapterName },
               title

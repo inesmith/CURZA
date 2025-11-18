@@ -93,6 +93,22 @@ const toSlug = (s: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'default';
+
+// 🔵 Short date label helper: "18 NOV"
+const formatShortDate = (ts: any): string => {
+  try {
+    if (!ts) return '';
+    const d: Date =
+      ts?.toDate?.() ??
+      (ts instanceof Date ? ts : new Date(ts));
+
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = d.toLocaleString('en-GB', { month: 'short' }).toUpperCase(); // e.g. "NOV"
+    return `${day} ${month}`;
+  } catch {
+    return '';
+  }
+};
 // ------- end helpers -------
 
 type ActivityItem = {
@@ -100,6 +116,7 @@ type ActivityItem = {
   text: string;
   score?: number | string;
   showArrow?: boolean;
+  createdAt?: Date; // used only for sorting on dashboard
 };
 
 export default function DashboardScreen() {
@@ -284,41 +301,84 @@ export default function DashboardScreen() {
         (async () => {
           try {
             const acts: ActivityItem[] = [];
+            const chosenClean = cleanSubject(chosenSubject);
 
-            // Results (tests)
-            const resultsCol = collection(db, 'users', user.uid, 'results');
-            const resQ = query(resultsCol, orderBy('createdAt', 'desc'));
-            const resSnap = await getDocs(resQ);
-            resSnap.forEach((d) => {
-              const r = d.data() as any;
-              const subj = cleanSubject(r?.subject ?? '');
-              if (subj && subj !== cleanSubject(chosenSubject)) return;
-              const title = String(r?.paper ?? 'TEST').toUpperCase();
-              const scr = typeof r?.score === 'number' ? r.score : undefined;
-              acts.push({
-                id: `res-${d.id}`,
-                text: `COMPLETED ${title}`,
-                score: typeof scr === 'number' ? scr : undefined,
-                showArrow: true,
+            // Results (tests) -> users/{uid}/results
+            try {
+              const resultsCol = collection(db, 'users', user.uid, 'results');
+              const resQ = query(resultsCol, orderBy('createdAt', 'desc'));
+              const resSnap = await getDocs(resQ);
+              resSnap.forEach((d) => {
+                const r = d.data() as any;
+                const subj = cleanSubject(r?.subject ?? '');
+                if (subj && subj !== chosenClean) return;
+
+                const title = String(r?.paper || r?.title || 'TEST').toUpperCase();
+
+                let score: number | undefined;
+                if (typeof r?.score === 'number') {
+                  score = r.score;
+                } else if (typeof r?.percentage === 'number') {
+                  score = Math.round(r.percentage);
+                } else if (
+                  typeof r?.totalScore === 'number' &&
+                  typeof r?.totalMarks === 'number' &&
+                  r.totalMarks > 0
+                ) {
+                  score = Math.round((r.totalScore / r.totalMarks) * 100);
+                }
+
+                const createdAt: Date | undefined =
+                  r?.createdAt && typeof r.createdAt.toDate === 'function'
+                    ? r.createdAt.toDate()
+                    : undefined;
+
+                const dateLabel = formatShortDate(r?.createdAt);
+
+                acts.push({
+                  id: `res-${d.id}`,
+                  text: `TEST COMPLETED – ${title}${dateLabel ? ` • ${dateLabel}` : ''}`,
+                  score: typeof score === 'number' ? score : undefined,
+                  showArrow: true,
+                  createdAt,
+                });
               });
-            });
+            } catch (e) {
+              console.log('load results for recent activities failed:', e);
+            }
 
-            // Summaries
-            const sumsCol = collection(db, 'users', user.uid, 'summaries');
-            const sumsQ = query(sumsCol, orderBy('generatedAt', 'desc'));
-            const sumsSnap = await getDocs(sumsQ);
-            sumsSnap.forEach((d) => {
-              const s = d.data() as any;
-              const subj = cleanSubject(s?.subject ?? '');
-              if (subj && subj !== cleanSubject(chosenSubject)) return;
-              const ch = String(s?.chapter ?? '').trim() || '1';
-              acts.push({
-                id: `sum-${d.id}`,
-                text: `READ ${cleanSubject(subj || chosenSubject)} SUMMARY - CHAPTER ${ch}`,
+            // Summaries -> users/{uid}/summaries
+            try {
+              const sumsCol = collection(db, 'users', user.uid, 'summaries');
+              const sumsQ = query(sumsCol, orderBy('generatedAt', 'desc'));
+              const sumsSnap = await getDocs(sumsQ);
+              sumsSnap.forEach((d) => {
+                const s = d.data() as any;
+                const subj = cleanSubject(s?.subject ?? '');
+                if (subj && subj !== chosenClean) return;
+
+                const ch = String(s?.chapter ?? '').trim() || '1';
+                const chapName = s?.chapterName
+                  ? String(s.chapterName).trim()
+                  : `Chapter ${ch}`;
+
+                const ts = s?.generatedAt || s?.studiedAt;
+                const createdAt: Date | undefined =
+                  ts && typeof ts.toDate === 'function' ? ts.toDate() : undefined;
+
+                const dateLabel = formatShortDate(ts);
+
+                acts.push({
+                  id: `sum-${d.id}`,
+                  text: `SUMMARY STUDIED – ${chapName}${dateLabel ? ` • ${dateLabel}` : ''}`,
+                  createdAt,
+                });
               });
-            });
+            } catch (e) {
+              console.log('load summaries for recent activities failed:', e);
+            }
 
-            // Chapters covered (optional collection: users/{uid}/chaptersProgress)
+            // Chapters covered / revised -> users/{uid}/chaptersProgress
             try {
               const chCol = collection(db, 'users', user.uid, 'chaptersProgress');
               const chQ = query(chCol, orderBy('updatedAt', 'desc'));
@@ -326,18 +386,42 @@ export default function DashboardScreen() {
               chSnap.forEach((d) => {
                 const c = d.data() as any;
                 const subj = cleanSubject(c?.subject ?? '');
-                if (subj && subj !== cleanSubject(chosenSubject)) return;
+                if (subj && subj !== chosenClean) return;
+
                 const ch = String(c?.chapter ?? '').trim() || '1';
+                const chapName = c?.chapterName
+                  ? String(c.chapterName).trim()
+                  : `Chapter ${ch}`;
+
+                const ts = c?.updatedAt;
+                const createdAt: Date | undefined =
+                  ts && typeof ts.toDate === 'function' ? ts.toDate() : undefined;
+
+                const dateLabel = formatShortDate(ts);
+                const status = (c?.status || '').toString().toLowerCase();
+
+                const text =
+                  status === 'revised'
+                    ? `CHAPTER MARKED AS REVISED – ${chapName}${dateLabel ? ` • ${dateLabel}` : ''}`
+                    : `CHAPTER COVERED – ${chapName}${dateLabel ? ` • ${dateLabel}` : ''}`;
+
                 acts.push({
                   id: `chap-${d.id}`,
-                  text: `COVERED CHAPTER ${ch} – ${cleanSubject(subj || chosenSubject)}`,
+                  text,
+                  createdAt,
                 });
               });
-            } catch {
-              // optional, ignore
+            } catch (e) {
+              console.log('load chaptersProgress for recent activities failed:', e);
             }
 
-            acts.sort((a, b) => (a.id > b.id ? -1 : 1));
+            // Sort by createdAt (newest first)
+            acts.sort((a, b) => {
+              const ta = a.createdAt?.getTime?.() ?? 0;
+              const tb = b.createdAt?.getTime?.() ?? 0;
+              return tb - ta;
+            });
+
             setRecentActivities(acts.slice(0, 5));
           } catch {
             setRecentActivities([]);

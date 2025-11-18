@@ -20,7 +20,7 @@ import { summariseAI, createTestAI, listOptionsAI } from '../../firebase';
 
 // Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 
 // Content
@@ -30,7 +30,13 @@ import ExampleSection from '../components/ExampleSection';
 import TipBoxCard from '../components/TipBoxCard';
 
 // progress helpers
-import { incSummariesStudied, incChaptersCovered } from '../utils/progress';
+import {
+  incSummariesStudied,
+  incChaptersCovered,
+  logSummaryStudied,
+  logChapterRevised,
+} from '../utils/progress';
+
 
 // AI chapters util (returns total + names)
 import { getChaptersMeta } from '../utils/chaptersMeta';
@@ -99,7 +105,7 @@ export default function SummariesScreen() {
 
   const stripLead = (s: string) => String(s ?? '').replace(/^[•\-\d\.\)\s]+/, '').trim();
 
-    const stripChapterPrefixFromTitle = (s: any): string =>
+  const stripChapterPrefixFromTitle = (s: any): string =>
     String(s ?? '')
       // remove things like "Chapter 1: " / "CHAPTER 3 - "
       .replace(/^chapter\s*\d+\s*[:\-–]\s*/i, '')
@@ -127,7 +133,6 @@ export default function SummariesScreen() {
 
     return t;
   };
-
 
   const dedupe = (arr: string[]) => {
     const seen = new Set<string>();
@@ -309,7 +314,7 @@ export default function SummariesScreen() {
         t = [];
       }
 
-            // Normalize to ensure each topic has a clean `.title`
+      // Normalize to ensure each topic has a clean `.title`
       let normalized: TopicSection[] = (Array.isArray(t) ? t : []).map(
         (x: any, i: number) => {
           const rawTitle =
@@ -333,7 +338,6 @@ export default function SummariesScreen() {
         }
       );
 
-
       // Fallback if nothing came back
       if (!normalized.length) {
         normalized = defaultTopicsForChapter(chapName);
@@ -342,12 +346,20 @@ export default function SummariesScreen() {
       // Set topics (with key concepts if present)
       setTopics(normalized);
 
-      // progress tick (optional to keep)
-      try {
-        await incSummariesStudied();
-      } catch (e) {
-        console.log('incSummariesStudied after topics failed:', e);
-      }
+      // progress tick + recent activity
+try {
+  await incSummariesStudied();
+  await logSummaryStudied({
+    curriculum,
+    grade,
+    subject: subject || 'Mathematics',
+    chapter: chapNum,
+    chapterName: chapName,
+  });
+} catch (e) {
+  console.log('summary studied logging failed:', e);
+}
+
     } catch (e) {
       console.log('onSelectChapter failed — using fallback topics:', e);
       const fallback = defaultTopicsForChapter();
@@ -663,7 +675,6 @@ export default function SummariesScreen() {
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
-          {/* (Removed the duplicate "Back to Dashboard" quick link here) */}
 
           {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
@@ -814,18 +825,38 @@ export default function SummariesScreen() {
                   </Pressable>
 
                   <Pressable
-                    style={s.yellowBtn}
-                    onPress={async () => {
-                      try {
-                        await incChaptersCovered();
-                        show('Chapter marked as revised. Progress updated.', 'success');
-                      } catch (e) {
-                        show('Could not update progress right now.', 'error');
-                      }
-                    }}
-                  >
-                    <Text style={s.yellowBtnText}>Mark Chapter as Revised</Text>
-                  </Pressable>
+  style={s.yellowBtn}
+  onPress={async () => {
+    if (!subject || chapter === '-') {
+      show('Choose a subject and chapter first.', 'error');
+      return;
+    }
+
+    const chapKey = String(chapter);
+    const chapName =
+      chapterNames[chapKey] ??
+      chapterNames[Number(chapKey) as any] ??
+      '';
+
+    try {
+      await incChaptersCovered();
+      await logChapterRevised({
+        curriculum,
+        grade,
+        subject,
+        chapter: chapKey,
+        chapterName: chapName,
+      });
+      show('Chapter marked as revised. Progress updated.', 'success');
+    } catch (e) {
+      console.log('chapter revised logging failed:', e);
+      show('Could not update progress right now.', 'error');
+    }
+  }}
+>
+  <Text style={s.yellowBtnText}>Mark Chapter as Revised</Text>
+</Pressable>
+
                 </View>
 
                 {/* Render Topic 1..N */}

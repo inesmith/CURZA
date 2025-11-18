@@ -7,6 +7,8 @@ import {
   updateDoc,
   serverTimestamp,
   increment,
+  collection,
+  addDoc,
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
@@ -78,7 +80,7 @@ export async function incWithContext(
 }
 
 /**
- * Convenience shorthands (optional; used elsewhere in your app)
+ * Convenience shorthands (used elsewhere in your app)
  */
 export async function incSummariesStudied() {
   const user = getAuth().currentUser;
@@ -126,4 +128,101 @@ export async function incTestsCompleted() {
     });
   }
   await updateDoc(ref, { testsCompleted: increment(1), updatedAt: serverTimestamp() });
+}
+
+/* ------------------------------------------------------------------ */
+/* 🔵 NEW: Activity logging helpers for Recent Activities on dashboard */
+/* ------------------------------------------------------------------ */
+
+type SummaryActivityOpts = {
+  curriculum?: string;
+  grade?: string | number;
+  subject: string;
+  chapter: string | number;
+  chapterName?: string;
+};
+
+/**
+ * Log that a summary was studied for a specific chapter.
+ * Writes to: users/{uid}/summaries
+ * Dashboard uses this for "SUMMARY STUDIED – <chapter name> • <date>".
+ */
+export async function logSummaryStudied(opts: SummaryActivityOpts) {
+  const user = getAuth().currentUser;
+  if (!user) return;
+
+  const subj = opts.subject || 'Unknown subject';
+  const ch = String(opts.chapter ?? '1').trim();
+
+  const colRef = collection(db, 'users', user.uid, 'summaries');
+  await addDoc(colRef, {
+    subject: subj,
+    chapter: ch,
+    chapterName: opts.chapterName ?? null,
+    curriculum: opts.curriculum ?? null,
+    grade: opts.grade ?? null,
+    generatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Log that a chapter was marked as revised.
+ * Writes to: users/{uid}/chaptersProgress
+ * Dashboard uses this for "CHAPTER MARKED AS REVISED – <chapter name> • <date>".
+ */
+export async function logChapterRevised(opts: SummaryActivityOpts) {
+  const user = getAuth().currentUser;
+  if (!user) return;
+
+  const subj = opts.subject || 'Unknown subject';
+  const ch = String(opts.chapter ?? '1').trim();
+
+  const colRef = collection(db, 'users', user.uid, 'chaptersProgress');
+  await addDoc(colRef, {
+    subject: subj,
+    chapter: ch,
+    chapterName: opts.chapterName ?? null,
+    curriculum: opts.curriculum ?? null,
+    grade: opts.grade ?? null,
+    status: 'revised',
+    updatedAt: serverTimestamp(),
+  });
+}
+
+type TestActivityOpts = {
+  subject: string;
+  paper: string;              // test name / paper name / section name
+  score: number;              // percentage
+  totalMarks?: number | null;
+  curriculum?: string | null;
+  grade?: string | number | null;
+};
+
+/**
+ * Log that a test was completed with a mark.
+ * Writes to: users/{uid}/results
+ * Dashboard uses this for "TEST COMPLETED – <paper> • <date>" + mark on the right.
+ */
+export async function logTestCompleted(opts: TestActivityOpts) {
+  const user = getAuth().currentUser;
+  if (!user) return;
+
+  let scoreNum = typeof opts.score === 'number'
+    ? opts.score
+    : Number(opts.score);
+
+  if (!Number.isFinite(scoreNum)) {
+    scoreNum = 0;
+  }
+
+  const colRef = collection(db, 'users', user.uid, 'results');
+  await addDoc(colRef, {
+    subject: opts.subject || 'Unknown subject',
+    paper: opts.paper || 'TEST',
+    score: scoreNum,
+    totalMarks: opts.totalMarks ?? null,
+    curriculum: opts.curriculum ?? null,
+    grade: opts.grade ?? null,
+    createdAt: serverTimestamp(),
+  });
 }

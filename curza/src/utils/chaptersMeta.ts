@@ -1,3 +1,4 @@
+// curza/src/utils/chaptersMeta.ts
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ensureAuthReady } from "./ensureAuthReady";
 import { app } from "../../firebase"; // keep your existing export

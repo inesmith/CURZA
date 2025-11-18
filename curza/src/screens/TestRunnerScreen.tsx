@@ -14,11 +14,14 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { scoreTestAI, db, generateTestAI } from '../../firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 // inline pad
 import InlineWorkingPad from '../components/InlineWorkingPad';
+
+// 🔵 NEW: progress logging
+import { incTestsCompleted } from '../utils/progress';
 
 type Nav = StackNavigationProp<RootStackParamList>;
 
@@ -56,7 +59,7 @@ type Params = {
   durationSec?: number;   // required when timed=true
   blocks?: Block[];       // structure template (used to generate fresh questions)
 
-  // we’ll also pass these from the practice screen so AI knows:
+  // passed from Practice screen so AI + logging know which test this is
   grade?: number | string;
   paper?: string;         // "Paper 1" | "Paper 2" etc
 };
@@ -73,13 +76,20 @@ const fmt = (secs: number) => {
 export default function TestRunnerScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<any>();
+
+  const params = (route.params || {}) as Params;
+
   const {
     title,
     totalMarks = 0,
     timed = false,
     durationSec = 0,
     blocks = [],
-  } = (route.params || {}) as Params;
+    subject,
+    grade,
+    paper,
+    mode = 'full',
+  } = params;
 
   // Timer
   const [paused, setPaused] = useState(false);
@@ -148,14 +158,14 @@ export default function TestRunnerScreen() {
       try {
         setGenLoading(true);
         const res: any = await generateTestAI({
-          subject: (route.params as any)?.subject ?? 'Mathematics',
+          subject: subject ?? 'Mathematics',
           title: title ?? 'TEST',
           difficulty: 'medium',
           totalMarks,
           blocks,
           seed: Date.now(),                       // forces variation each time
-          grade: (route.params as any)?.grade ?? 12,
-          paper: (route.params as any)?.paper ?? 'Paper 1',
+          grade: grade ?? 12,
+          paper: paper ?? 'Paper 1',
         });
 
         console.log('generateTestAI ->', res);
@@ -163,24 +173,11 @@ export default function TestRunnerScreen() {
           console.log('generateTestAI raw:', JSON.stringify(res, null, 2));
         } catch (_) {}
 
-        // ✅ NEW: if the function returns no blocks, fall back to the original blueprint
+        // if the function returns no blocks, fall back to the original blueprint
         const apiBlocks = Array.isArray(res?.data?.blocks) ? res.data.blocks : [];
         const aiBlocks = apiBlocks.length > 0 ? apiBlocks : blocks;
 
-        const ok =
-          !!(title ?? 'TEST') &&
-          Array.isArray(aiBlocks) &&
-          aiBlocks.length > 0 &&
-          typeof totalMarks === 'number' &&
-          totalMarks > 0;
-        console.log('schema ok?', ok);
-
         const questions = aiBlocks.filter((b: any) => b?.type === 'question');
-        console.log(
-          'questions with parts?',
-          questions.every((q: any) => Array.isArray(q.parts) && q.parts.length > 0)
-        );
-
         const sumQMarks = questions.reduce((a: number, q: any) => a + Number(q?.marks || 0), 0);
         console.log('question marks sum vs total:', sumQMarks, 'vs', totalMarks, '->', sumQMarks === totalMarks);
 
@@ -198,7 +195,7 @@ export default function TestRunnerScreen() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, totalMarks, JSON.stringify(blocks)]);
+  }, [title, totalMarks, subject, grade, paper, JSON.stringify(blocks)]);
 
   // Start/stop the ticking based on paused/ended
   useEffect(() => {
@@ -478,7 +475,16 @@ export default function TestRunnerScreen() {
         answers: { items },
         working,
         rubric: { stepwise: true, methodMarks: true },
-        meta: { title, subject: (route.params as Params)?.subject, totalMarks, timed, durationSec },
+        meta: {
+          title,
+          subject,
+          totalMarks,
+          timed,
+          durationSec,
+          grade,
+          paper,
+          mode,
+        },
       });
 
       const result = res.data as any;
@@ -492,12 +498,13 @@ export default function TestRunnerScreen() {
           hasImage: true,
         }));
 
+        // Save full attempt
         await setDoc(
           doc(db, 'users', user.uid, 'attempts', attemptId),
           {
-            mode: (route.params as Params)?.mode ?? 'full',
+            mode,
             title,
-            subject: (route.params as Params)?.subject,
+            subject,
             totalMarks,
             timed: !!timed,
             durationSec: durationSec ?? null,
@@ -508,6 +515,47 @@ export default function TestRunnerScreen() {
           },
           { merge: true }
         );
+
+        // Update global testsCompleted counter (legacy/global)
+        try {
+          await incTestsCompleted();
+        } catch (e) {
+          console.log('incTestsCompleted failed:', e);
+        }
+
+        // Save compact result doc for Dashboard/Results
+        const resSubject = subject || 'Mathematics';
+        const resPaper = paper || (mode === 'full' ? title : undefined);
+
+        const totalScore =
+          typeof result?.totalScore === 'number'
+            ? result.totalScore
+            : typeof result?.score?.awarded === 'number'
+            ? result.score.awarded
+            : typeof result?.score === 'number'
+            ? result.score
+            : 0;
+
+        const percentage =
+          typeof result?.percentage === 'number'
+            ? result.percentage
+            : totalMarks > 0
+            ? Math.round((totalScore / totalMarks) * 100)
+            : null;
+
+        const resultDoc = {
+          title: title || 'Test',
+          subject: resSubject,
+          paper: resPaper,
+          totalMarks,
+          totalScore,
+          percentage,
+          breakdown: Array.isArray(result?.breakdown) ? result.breakdown : [],
+          createdAt: serverTimestamp(),
+        };
+
+        const resRef = doc(collection(db, 'users', user.uid, 'results'));
+        await setDoc(resRef, resultDoc);
       }
 
       navigation.navigate('ResultDetail', { result });
