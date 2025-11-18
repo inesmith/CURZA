@@ -181,6 +181,10 @@ export default function PractiseScreen() {
             ? params.durationSec ?? 3 * 60 * 60
             : undefined,
         blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
+
+        // 🔴 pass through grade + paper so TestRunner/AI know which test this is
+        grade: params.grade,
+        paper: params.examType,
       } as any);
     } catch (err) {
       console.log('createTestAI(full) error:', err);
@@ -219,6 +223,9 @@ export default function PractiseScreen() {
               (params.count ?? 10) * 120
             : undefined,
         blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
+
+        // 🔴 make sure the section test also respects the chosen grade
+        grade: params.grade,
       } as any);
     } catch (err) {
       console.log('createTestAI(section) error:', err);
@@ -477,7 +484,7 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
     marginLeft: -20,
-    color: '#E5E7EB',
+    color: 'white',
   },
   dashboardTab: { fontWeight: 'bold', marginTop: -115 },
   summariesTab: { opacity: 0.8, marginTop: -15 },

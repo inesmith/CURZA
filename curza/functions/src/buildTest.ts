@@ -1,238 +1,655 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+// functions/src/buildTest.ts
+import { onCall } from 'firebase-functions/v2/https';
 
-/**
- * buildTest
- *  - mode: 'full' | 'section'
- *  - subject: string
- *  - grade: string | number
- *  - examType?: 'Paper 1' | 'Paper 2' | ...
- *  - topic?: string                // for section mode
- *  - count?: number                // for section mode
- *  - timed?: boolean
- *
- * Returns:
- *  {
- *    message: string,
- *    title: string,
- *    subject: string,
- *    totalMarks: number,
- *    timed?: boolean,
- *    durationSec?: number,
- *    blocks: Array<SectionBlock | QuestionBlock>
- *  }
- */
+// ---------- shared types (align with app & generateTestAI) -------------
 
-// -------- Types kept minimal & app-friendly ----------
-
-type SectionBlock = {
-  type: 'section';
-  title: string;
-  instructions?: string;
-  marks?: number; // optional header total
-};
-
-type QuestionPart = {
-  label: string;     // e.g. "(a)" or "1.1"
-  marks: number;
-  prompt: string;
-};
-
-type QuestionResource = {
-  kind: 'image' | 'table' | 'formula';
-  uri?: string;
+type Part = {
+  label?: string;
   text?: string;
+  marks?: number;
+  type?: string;
+  options?: { id: string; text: string }[];
 };
 
-type QuestionBlock = {
-  type: 'question';
-  number: string;    // "1", "1.1", etc.
-  marks: number;     // total for this question (or sub-question if using parts)
-  prompt: string;
-  parts?: QuestionPart[];
-  resources?: QuestionResource[];
-};
+type Block =
+  | {
+      type: 'section';
+      title?: string;
+      instructions?: string;
+      marks?: number | null;
+    }
+  | {
+      type: 'question';
+      number?: string | number;
+      prompt?: string;
+      marks?: number;
+      parts?: Part[];
+      resources?: any;
+    }
+  | Record<string, any>;
 
-type TestBlock = SectionBlock | QuestionBlock;
-
-// ------------- Helpers -----------------
-
-const sec = (title: string, instructions?: string, marks?: number): SectionBlock => ({
-  type: 'section',
-  title,
-  instructions,
-  marks,
-});
-
-const q = (
-  number: string,
-  marks: number,
-  prompt: string,
-  parts?: QuestionPart[],
-  resources?: QuestionResource[],
-): QuestionBlock => ({
-  type: 'question',
-  number,
-  marks,
-  prompt,
-  parts,
-  resources,
-});
-
-const sumMarks = (blocks: TestBlock[]) =>
-  blocks.reduce((acc, b) => acc + (b.type === 'question' ? b.marks : 0), 0);
-
-// Simple CAPS Paper 1 skeleton for Grade 12 Mathematics (adjust later as needed)
-function buildCapsMathsG12Paper1(): { title: string; blocks: TestBlock[]; totalMarks: number } {
-  const title = 'Mathematics Paper 1';
-  const blocks: TestBlock[] = [];
-
-  // Section A — Algebra and Patterns (example structure)
-  blocks.push(
-    sec('SECTION A: ALGEBRA & PATTERNS', 'Answer ALL questions in this section. Show all working.')
-  );
-
-  blocks.push(
-    q('1', 20,
-      'Simplify and solve where applicable.',
-      [
-        { label: '(a)', marks: 6, prompt: 'Simplify: (2x^2y^-1) · (3x^-1y^3) ÷ (6xy).' },
-        { label: '(b)', marks: 6, prompt: 'Solve for x: 3x^2 - 7x - 6 = 0.' },
-        { label: '(c)', marks: 8, prompt: 'Given f(x) = ax^2 + bx + c with f(1)=0, f(2)=3, f(-1)=-3. Determine a, b, c.' },
-      ])
-  );
-
-  blocks.push(
-    q('2', 15,
-      'Number patterns and sequences.',
-      [
-        { label: '(a)', marks: 7, prompt: 'Given a_n = 3n^2 - 5n. Find the 10th term and the general difference Δa_n.' },
-        { label: '(b)', marks: 8, prompt: 'A geometric series has first term 6 and common ratio r. The sum of the first 5 terms is 186. Find r.' },
-      ])
-  );
-
-  // Section B — Functions & Graphs
-  blocks.push(
-    sec('SECTION B: FUNCTIONS & GRAPHS', 'Sketch neatly. Indicate intercepts and asymptotes where relevant.')
-  );
-
-  blocks.push(
-    q('3', 20,
-      'Consider f(x) = x^2 - 4x - 5 and g(x) = 2x - 3.',
-      [
-        { label: '(a)', marks: 6, prompt: 'Find the coordinates of the turning point of f and the intercepts with axes.' },
-        { label: '(b)', marks: 8, prompt: 'Solve f(x) = g(x). Hence, determine points of intersection.' },
-        { label: '(c)', marks: 6, prompt: 'Sketch f and g on the same set of axes and shade the region where f(x) ≥ g(x).' },
-      ])
-  );
-
-  // Section C — Calculus (Differentiation & Intro Integration)
-  blocks.push(
-    sec('SECTION C: CALCULUS', 'Unless stated otherwise, use first principles only when requested.')
-  );
-
-  blocks.push(
-    q('4', 25,
-      'Differentiation and applications.',
-      [
-        { label: '(a)', marks: 7, prompt: 'Differentiate with respect to x: h(x) = 3x^3 - 5x^2 + 7x - 2.' },
-        { label: '(b)', marks: 8, prompt: 'Find the equation of the tangent to y = x^3 - 4x at x = 2.' },
-        { label: '(c)', marks: 10, prompt: 'A rectangle has perimeter 40. Express area A in terms of x and determine dimensions for maximum area.' },
-      ])
-  );
-
-  // Section D — Probability (adjust if you prefer this in Paper 2)
-  blocks.push(
-    sec('SECTION D: PROBABILITY', 'Give answers in simplest fractional form unless stated otherwise.')
-  );
-
-  blocks.push(
-    q('5', 20,
-      'Basic probability and counting principles.',
-      [
-        { label: '(a)', marks: 8, prompt: 'A box has 4 red, 5 blue, 3 green marbles. Two are drawn without replacement. Find P(both red).' },
-        { label: '(b)', marks: 12, prompt: 'How many 5-digit codes can be formed from digits 0–9 if repetition is allowed and the code must be odd?' },
-      ])
-  );
-
-  const total = sumMarks(blocks); // 100
-  return { title, blocks, totalMarks: total };
+interface BuildTestRequest {
+  subject?: string;
+  grade?: number | string;
+  mode?: 'full' | 'section';
+  examType?: string;        // "Paper 1", "Paper 2", etc.
+  topic?: string;
+  count?: number;
+  timed?: boolean;
+  durationSec?: number | null;
 }
 
-// Topic-based section test (count × 5 marks default)
-function buildSectionTest(subject: string, grade: string | number, topic: string, count = 10, timed?: boolean) {
-  const title = `${subject} • ${topic}`;
-  const blocks: TestBlock[] = [];
+interface BuildTestResponse {
+  message?: string;
+  title: string;
+  subject: string;
+  totalMarks: number;
+  timed: boolean;
+  durationSec: number | null;
+  blocks: Block[];
+}
 
-  blocks.push(
-    sec(`TOPIC TEST: ${topic}`, 'Answer all questions. Show working where applicable.')
-  );
+// ---------- small helpers ----------------------------------------------
 
-  for (let i = 1; i <= count; i++) {
+const toNumber = (v: any, fallback: number): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+
+const normalisePaperKey = (examType?: string): 'paper1' | 'paper2' | 'paper3' => {
+  const key = (examType ?? 'Paper 1').toString().toLowerCase().replace(/\s+/g, '');
+  if (key.includes('2')) return 'paper2';
+  if (key.includes('3')) return 'paper3';
+  return 'paper1';
+};
+
+// ---------- BLUEPRINTS --------------------------------------------------
+
+// Senior phase (Grades 8–9) – single 100-mark paper
+const buildSeniorMathsPaper = (grade: number, examType: string): { blocks: Block[]; totalMarks: number } => {
+  const totalMarks = 100;
+
+  const blocks: Block[] = [
+    {
+      type: 'section',
+      title: 'SECTION A: NUMBER, ALGEBRA & PATTERNS',
+      instructions: 'Answer ALL questions in this section. Show ALL working.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '1',
+      prompt: 'Whole numbers, integers and basic algebraic manipulation.',
+      marks: 25,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Perform basic operations with integers and whole numbers.',
+          marks: 8,
+        },
+        {
+          label: '(b)',
+          text: 'Simplify an algebraic expression in one variable.',
+          marks: 8,
+        },
+        {
+          label: '(c)',
+          text: 'Solve a simple linear equation or word problem.',
+          marks: 9,
+        },
+      ],
+      resources: null,
+    },
+    {
+      type: 'question',
+      number: '2',
+      prompt: 'Patterns, sequences and simple functions.',
+      marks: 20,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Describe and extend a numeric pattern.',
+          marks: 7,
+        },
+        {
+          label: '(b)',
+          text: 'Determine a rule for a simple pattern or function table.',
+          marks: 7,
+        },
+        {
+          label: '(c)',
+          text: 'Apply the rule to find a missing term or value.',
+          marks: 6,
+        },
+      ],
+      resources: null,
+    },
+
+    {
+      type: 'section',
+      title: 'SECTION B: GEOMETRY & MEASUREMENT',
+      instructions: 'Show all construction lines and give reasons where appropriate.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '3',
+      prompt: '2D shapes, perimeter, area and basic geometry.',
+      marks: 25,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Work with angles in triangles or intersecting lines.',
+          marks: 8,
+        },
+        {
+          label: '(b)',
+          text: 'Calculate perimeter and/or area of basic shapes.',
+          marks: 8,
+        },
+        {
+          label: '(c)',
+          text: 'Solve a word problem involving measurement.',
+          marks: 9,
+        },
+      ],
+      resources: null,
+    },
+
+    {
+      type: 'section',
+      title: 'SECTION C: DATA HANDLING & PROBABILITY',
+      instructions: 'Read all graphs carefully and give answers in simplest form.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '4',
+      prompt: 'Data handling, graphs and basic probability.',
+      marks: 30,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Interpret a bar graph, pie chart or line graph.',
+          marks: 10,
+        },
+        {
+          label: '(b)',
+          text: 'Calculate mean, median or mode from given data.',
+          marks: 10,
+        },
+        {
+          label: '(c)',
+          text: 'Answer simple probability questions from a familiar context.',
+          marks: 10,
+        },
+      ],
+      resources: null,
+    },
+  ];
+
+  return { blocks, totalMarks };
+};
+
+// FET Maths Paper 1 (Grades 10–12, CAPS-style)
+const buildFETMathsPaper1 = (grade: number): { blocks: Block[]; totalMarks: number } => {
+  const totalMarks = 150;
+  const includeCalculus = grade >= 12; // only Grade 12 has Calculus as a full section
+
+  const blocks: Block[] = [
+    {
+      type: 'section',
+      title: 'SECTION A: ALGEBRA & PATTERNS',
+      instructions: 'Answer ALL questions in this section. Show all working.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '1',
+      prompt: 'Algebraic manipulation, factorisation and equations.',
+      marks: 40,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Simplify and factorise algebraic expressions.',
+          marks: 12,
+        },
+        {
+          label: '(b)',
+          text: 'Solve linear and quadratic equations/inequalities.',
+          marks: 14,
+        },
+        {
+          label: '(c)',
+          text: 'Apply algebra in a contextual or word problem.',
+          marks: 14,
+        },
+      ],
+      resources: null,
+    },
+    {
+      type: 'question',
+      number: '2',
+      prompt: 'Number patterns, sequences and series.',
+      marks: 30,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Work with arithmetic or geometric sequences.',
+          marks: 10,
+        },
+        {
+          label: '(b)',
+          text: 'Determine general terms and use them to solve problems.',
+          marks: 10,
+        },
+        {
+          label: '(c)',
+          text: 'Apply patterns in a contextual situation.',
+          marks: 10,
+        },
+      ],
+      resources: null,
+    },
+
+    {
+      type: 'section',
+      title: 'SECTION B: FUNCTIONS & GRAPHS',
+      instructions:
+        'Sketch neatly on the provided axes. Indicate intercepts, turning points and asymptotes where relevant.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '3',
+      prompt: 'Functions, graphs and transformations.',
+      marks: 40,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Determine key features of given functions (domain, range, intercepts).',
+          marks: 12,
+        },
+        {
+          label: '(b)',
+          text: 'Solve equations and inequalities using graphs.',
+          marks: 14,
+        },
+        {
+          label: '(c)',
+          text: 'Sketch and interpret transformations of basic functions.',
+          marks: 14,
+        },
+      ],
+      resources: null,
+    },
+  ];
+
+  if (includeCalculus) {
+    // Grade 12 Paper 1 includes Calculus
     blocks.push(
-      q(
-        String(i),
-        5,
-        `Question ${i} on ${topic}. Provide a complete solution.`
-      )
+      {
+        type: 'section',
+        title: 'SECTION C: CALCULUS',
+        instructions: 'Use first principles only when explicitly requested.',
+        marks: null,
+      },
+      {
+        type: 'question',
+        number: '4',
+        prompt: 'Differentiation and applications.',
+        marks: 40,
+        parts: [
+          {
+            label: '(a)',
+            text: 'Differentiate basic polynomial functions.',
+            marks: 12,
+          },
+          {
+            label: '(b)',
+            text: 'Apply derivatives to tangents and rates of change.',
+            marks: 14,
+          },
+          {
+            label: '(c)',
+            text: 'Solve an optimisation or maximum/minimum problem.',
+            marks: 14,
+          },
+        ],
+        resources: null,
+      }
+    );
+  } else {
+    // Grades 10–11: use Probability / Financial Maths instead of full Calculus section
+    blocks.push(
+      {
+        type: 'section',
+        title: 'SECTION C: PROBABILITY & FINANCIAL MATHEMATICS',
+        instructions: 'Give answers in simplest form. Round where appropriate.',
+        marks: null,
+      },
+      {
+        type: 'question',
+        number: '4',
+        prompt: 'Basic probability and/or financial mathematics.',
+        marks: 40,
+        parts: [
+          {
+            label: '(a)',
+            text: 'Answer questions involving simple probability rules.',
+            marks: 12,
+          },
+          {
+            label: '(b)',
+            text: 'Work with interest, depreciation or growth formulae.',
+            marks: 14,
+          },
+          {
+            label: '(c)',
+            text: 'Solve a contextual problem involving probability or finance.',
+            marks: 14,
+          },
+        ],
+        resources: null,
+      }
     );
   }
 
-  const totalMarks = sumMarks(blocks);
-  const durationSec = timed ? count * 120 : undefined; // 2 min per question
+  return { blocks, totalMarks };
+};
+
+// FET Maths Paper 2 (Grades 10–12, CAPS-style topics)
+const buildFETMathsPaper2 = (grade: number): { blocks: Block[]; totalMarks: number } => {
+  const totalMarks = 150;
+
+  const blocks: Block[] = [
+    {
+      type: 'section',
+      title: 'SECTION A: TRIGONOMETRY',
+      instructions: 'Answer ALL questions in this section. Show all working and round answers appropriately.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '1',
+      prompt: 'Trig ratios, identities and equations.',
+      marks: 40,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Apply trig ratios in right-angled triangles or the unit circle (grade-appropriate).',
+          marks: 12,
+        },
+        {
+          label: '(b)',
+          text: 'Use trig identities to simplify expressions.',
+          marks: 14,
+        },
+        {
+          label: '(c)',
+          text: 'Solve trig equations and interpret solutions.',
+          marks: 14,
+        },
+      ],
+      resources: null,
+    },
+
+    {
+      type: 'section',
+      title: 'SECTION B: ANALYTICAL GEOMETRY',
+      instructions: 'Sketch where necessary and show all reasoning.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '2',
+      prompt: 'Analytical geometry of straight lines and circles/parabolas (grade-appropriate).',
+      marks: 35,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Work with gradients, distances or midpoints.',
+          marks: 11,
+        },
+        {
+          label: '(b)',
+          text: 'Determine equations of lines or circles from given information.',
+          marks: 12,
+        },
+        {
+          label: '(c)',
+          text: 'Solve a contextual analytic geometry problem.',
+          marks: 12,
+        },
+      ],
+      resources: null,
+    },
+
+    {
+      type: 'section',
+      title: 'SECTION C: EUCLIDEAN GEOMETRY',
+      instructions: 'Give clear reasons for all statements. Use the correct theorem names.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '3',
+      prompt: 'Euclidean geometry and circle geometry.',
+      marks: 40,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Prove or use properties of triangles and quadrilaterals.',
+          marks: 14,
+        },
+        {
+          label: '(b)',
+          text: 'Apply circle geometry theorems.',
+          marks: 12,
+        },
+        {
+          label: '(c)',
+          text: 'Solve a multi-step geometry problem with reasons.',
+          marks: 14,
+        },
+      ],
+      resources: null,
+    },
+
+    {
+      type: 'section',
+      title: 'SECTION D: STATISTICS & PROBABILITY',
+      instructions: 'Round answers appropriately and comment on context where asked.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '4',
+      prompt: 'Statistics and probability (grade-appropriate).',
+      marks: 35,
+      parts: [
+        {
+          label: '(a)',
+          text: 'Interpret or draw statistical graphs.',
+          marks: 11,
+        },
+        {
+          label: '(b)',
+          text: 'Calculate measures of central tendency or dispersion.',
+          marks: 12,
+        },
+        {
+          label: '(c)',
+          text: 'Solve probability questions in a contextual setting.',
+          marks: 12,
+        },
+      ],
+      resources: null,
+    },
+  ];
+
+  return { blocks, totalMarks };
+};
+
+// Fallback generic blueprint (non-Maths subjects or anything unexpected)
+const buildGenericFullPaper = (subject: string): { blocks: Block[]; totalMarks: number } => {
+  const totalMarks = 100;
+  const blocks: Block[] = [
+    {
+      type: 'section',
+      title: 'SECTION A',
+      instructions: 'Answer ALL questions in this section.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '1',
+      prompt: `Short questions on ${subject}.`,
+      marks: 30,
+      parts: [
+        { label: '(a)', text: `Short question 1 on ${subject}.`, marks: 10 },
+        { label: '(b)', text: `Short question 2 on ${subject}.`, marks: 10 },
+        { label: '(c)', text: `Short question 3 on ${subject}.`, marks: 10 },
+      ],
+      resources: null,
+    },
+    {
+      type: 'section',
+      title: 'SECTION B',
+      instructions: 'Answer ALL questions in this section.',
+      marks: null,
+    },
+    {
+      type: 'question',
+      number: '2',
+      prompt: `Longer response questions on ${subject}.`,
+      marks: 70,
+      parts: [
+        { label: '(a)', text: `Longer response 1 on ${subject}.`, marks: 25 },
+        { label: '(b)', text: `Longer response 2 on ${subject}.`, marks: 25 },
+        { label: '(c)', text: `Longer response 3 on ${subject}.`, marks: 20 },
+      ],
+      resources: null,
+    },
+  ];
+
+  return { blocks, totalMarks };
+};
+
+// Section-only tests (topic drills)
+const buildSectionTest = (req: BuildTestRequest): BuildTestResponse => {
+  const subject = req.subject ?? 'Mathematics';
+  const gradeNum = toNumber(req.grade, 12);
+  const topic = req.topic || 'Mixed Practice';
+  const count = toNumber(req.count, 10);
+  const timed = !!req.timed;
+  const durationSec =
+    timed && typeof req.durationSec === 'number'
+      ? req.durationSec
+      : timed
+      ? count * 90
+      : null;
+
+  const questionMarks = 5;
+  const totalMarks = count * questionMarks;
+
+  const blocks: Block[] = [
+    {
+      type: 'section',
+      title: `SECTION: ${topic}`,
+      instructions: 'Answer ALL questions in this section. Show ALL working.',
+      marks: null,
+    },
+  ];
+
+  for (let i = 0; i < count; i++) {
+    blocks.push({
+      type: 'question',
+      number: i + 1,
+      prompt: `Question on ${topic} (grade ${gradeNum}).`,
+      marks: questionMarks,
+      parts: [
+        {
+          label: '(a)',
+          text: `Solve or simplify a ${topic} question appropriate for grade ${gradeNum}.`,
+          marks: questionMarks,
+        },
+      ],
+      resources: null,
+    });
+  }
+
   return {
-    message: `Generated ${count}-question section test for ${subject} (${grade})`,
-    title,
+    message: `Generated section test for ${subject} (Grade ${gradeNum}) – ${topic}`,
+    title: `${subject}: ${topic}`,
     subject,
     totalMarks,
-    timed: !!timed,
+    timed,
     durationSec,
     blocks,
   };
-}
+};
 
-// Full exam (Paper 1 default) for CAPS Grade 12 Mathematics
-function buildFullExam(subject: string, grade: string | number, examType = 'Paper 1', timed?: boolean) {
-  const caps = buildCapsMathsG12Paper1();
-  const durationSec = timed ? 3 * 60 * 60 : undefined; // default 3 hours
+// ---------- MAIN CLOUD FUNCTION ----------------------------------------
 
-  return {
-    message: `Generated full test for ${subject} (${grade})`,
-    title: caps.title,
-    subject,
-    totalMarks: caps.totalMarks, // 100 with this template
-    timed: !!timed,
-    durationSec,
-    blocks: caps.blocks,
-  };
-}
+export const buildTest = onCall(
+  {
+    region: 'us-central1',
+  },
+  async (req): Promise<BuildTestResponse> => {
+    const data = (req.data || {}) as BuildTestRequest;
+    const subject = data.subject || 'Mathematics';
+    const gradeNum = toNumber(data.grade, 12);
+    const mode: 'full' | 'section' = data.mode === 'section' ? 'section' : 'full';
+    const paperKey = normalisePaperKey(data.examType);
+    const timed = !!data.timed;
 
-// ------------- Callable -----------------
-
-export const buildTest = onCall(async (req) => {
-  const data = (req.data ?? {}) as {
-    mode?: 'full' | 'section';
-    subject?: string;
-    grade?: string | number;
-    examType?: string;
-    topic?: string;
-    count?: number;
-    timed?: boolean;
-  };
-
-  const { mode, subject, grade, examType, topic, count, timed } = data;
-
-  if (!subject || !grade) {
-    throw new HttpsError('invalid-argument', 'Both subject and grade are required.');
-  }
-
-  if (mode === 'section') {
-    if (!topic) {
-      throw new HttpsError('invalid-argument', 'Topic is required for section tests.');
+    // SECTION TESTS (topic-based)
+    if (mode === 'section') {
+      return buildSectionTest(data);
     }
-    const c = typeof count === 'number' && count > 0 ? Math.min(count, 60) : 10;
-    return buildSectionTest(subject, grade, topic, c, timed);
-  }
 
-  // Default to full exam if mode is 'full' or missing
-  return buildFullExam(subject, grade, examType || 'Paper 1', timed);
-});
+    // FULL EXAMS
+    let blocks: Block[];
+    let totalMarks: number;
+
+    if (subject.toLowerCase().includes('math')) {
+      if (gradeNum <= 9) {
+        // Grades 8–9: single senior-phase style paper
+        ({ blocks, totalMarks } = buildSeniorMathsPaper(gradeNum, data.examType || 'Paper'));
+      } else {
+        // Grades 10–12: split into Paper 1 / Paper 2
+        if (paperKey === 'paper2') {
+          ({ blocks, totalMarks } = buildFETMathsPaper2(gradeNum));
+        } else {
+          ({ blocks, totalMarks } = buildFETMathsPaper1(gradeNum));
+        }
+      }
+    } else {
+      // Non-maths fallback
+      ({ blocks, totalMarks } = buildGenericFullPaper(subject));
+    }
+
+    const title =
+      subject.toLowerCase().includes('math') && gradeNum >= 10
+        ? `${subject} ${paperKey === 'paper2' ? 'Paper 2' : 'Paper 1'}`
+        : `${subject} Paper`;
+
+    const durationSec =
+      timed && typeof data.durationSec === 'number'
+        ? data.durationSec
+        : timed
+        ? 3 * 60 * 60
+        : null;
+
+    return {
+      message: `Generated full test for ${subject} (Grade ${gradeNum}) – ${data.examType ?? 'Paper'}`,
+      title,
+      subject,
+      totalMarks,
+      timed,
+      durationSec,
+      blocks,
+    };
+  }
+);

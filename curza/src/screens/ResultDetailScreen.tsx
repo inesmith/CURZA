@@ -286,7 +286,7 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
     marginLeft: -20,
-    color: '#E5E7EB',
+    color: 'white',
   },
 
   dashboardTab: {

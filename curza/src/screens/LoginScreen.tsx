@@ -100,7 +100,7 @@ export default function LoginScreen() {
 
                 <Text style={s.label}>Email</Text>
                 <TextInput
-                  placeholder="you@example.com"
+                  placeholder="Your Email"
                   placeholderTextColor="white"
                   style={s.input}
                   keyboardType="email-address"
@@ -111,7 +111,7 @@ export default function LoginScreen() {
 
                 <Text style={s.label}>Password</Text>
                 <TextInput
-                  placeholder="Your password"
+                  placeholder="Your Password"
                   placeholderTextColor="white"
                   style={s.input}
                   secureTextEntry
@@ -154,7 +154,7 @@ const s = StyleSheet.create({
   },
   tabText: {
     fontFamily: 'AlumniSans_500Medium', fontSize: 20, marginLeft: -20, letterSpacing: 1, marginBottom: 18,
-    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2, color: '#E5E7EB',
+    textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2, color: 'white',
   },
   tabTextWrapper: { position: 'absolute', top: '22%', left: '4.5%', alignItems: 'center', zIndex: 12, elevation: 6 },
   activeTab: { fontWeight: 'bold', marginTop: 37 },

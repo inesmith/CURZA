@@ -1,3 +1,4 @@
+// src/firebase.ts
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, initializeAuth, getReactNativePersistence, type Auth } from 'firebase/auth';
 import { Platform } from 'react-native';
@@ -11,7 +12,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDbQCczVN9NP1XPtWjb6u1aeOjrlIVZIvY",
   authDomain: "curza-d607e.firebaseapp.com",
   projectId: "curza-d607e",
-  storageBucket: "curza-d607e.firebasestorage.app",
+  storageBucket: "curza-d607e.appspot.com",
   messagingSenderId: "1052480298705",
   appId: "1:1052480298705:web:947cf2267208bda8e32ff0",
   measurementId: "G-WL3RX44BEP"
@@ -19,6 +20,7 @@ const firebaseConfig = {
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+// Auth (RN vs Web)
 let _auth: Auth;
 if (Platform.OS === 'web') {
   _auth = getAuth(app);
@@ -33,20 +35,23 @@ if (Platform.OS === 'web') {
 }
 export const auth = _auth;
 
+// DB & Storage
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// region must match your deployed functions list (us-central1)
-export const functions = getFunctions(app, 'us-central1');
+// Functions (region must match your deployed functions: us-central1)
+const functions = getFunctions(app, 'us-central1');
 
-// Keep client API in “test” terms
-export const summariseAI  = httpsCallable(functions, 'summarise');
-export const scoreTestAI  = httpsCallable(functions, 'scoreTest');  // simple stub added on server
-export const createTestAI = httpsCallable(functions, 'buildTest');
+// --- Callables ---
+export const generateTestAI = httpsCallable(functions, 'generateTestAI');
+
+export const summariseAI   = httpsCallable(functions, 'summarise');
+export const scoreTestAI   = httpsCallable(functions, 'scoreTest');
+export const createTestAI  = httpsCallable(functions, 'buildTest');
 export const listOptionsAI = httpsCallable(functions, 'listOptionsAI');
-export const keyConcepts = httpsCallable(functions, 'keyConcepts');
+export const keyConcepts   = httpsCallable(functions, 'keyConcepts');
 
-// --- 🔹 New: Typed helpers for AI lists ---
+// --- Typed helpers for AI lists ---
 type ListCtx = { curriculum: string; grade: string | number; subject: string };
 type TopicsResp = { topics?: string[] };
 type PapersResp = { papers?: string[] };

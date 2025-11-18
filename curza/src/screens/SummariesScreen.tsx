@@ -879,7 +879,7 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
     marginLeft: -20,
-    color: '#E5E7EB',
+    color: 'white',
   },
   dashboardTab: { fontWeight: 'bold', marginTop: -45 },
   summariesTab: { opacity: 0.9, marginTop: -15 },

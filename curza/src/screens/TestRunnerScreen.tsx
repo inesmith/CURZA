@@ -13,7 +13,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
-import { scoreTestAI, db } from '../../firebase';
+import { scoreTestAI, db, generateTestAI } from '../../firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
@@ -54,7 +54,11 @@ type Params = {
   totalMarks: number;     // from AI
   timed?: boolean;        // if true -> countdown
   durationSec?: number;   // required when timed=true
-  blocks?: Block[];       // AI-generated blocks
+  blocks?: Block[];       // structure template (used to generate fresh questions)
+
+  // we’ll also pass these from the practice screen so AI knows:
+  grade?: number | string;
+  paper?: string;         // "Paper 1" | "Paper 2" etc
 };
 
 const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
@@ -92,6 +96,110 @@ export default function TestRunnerScreen() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // generated blocks state
+  const [genLoading, setGenLoading] = useState<boolean>(false);
+  const [runBlocks, setRunBlocks] = useState<Block[]>(Array.isArray(blocks) ? blocks : []);
+
+  // small marks reconciler (ensures part sums & total match)
+  const reconcileMarks = (bs: Block[], total: number) => {
+    const questions = bs.filter((b: any) => b?.type === 'question') as Extract<Block, { type: 'question' }>[];
+    const qSum = questions.reduce((a, q) => a + Number(q.marks || 0), 0);
+
+    const fixParts = (q: any) => {
+      if (!Array.isArray(q.parts) || q.parts.length === 0) return q;
+      const partSum = q.parts.reduce((a: number, p: any) => a + Number(p?.marks || 0), 0);
+      if (partSum === Number(q.marks || 0)) return q;
+      const target = Number(q.marks || 0);
+      let running = 0;
+      const scaled = q.parts.map((p: any, i: number) => {
+        if (i === q.parts.length - 1) return { ...p, marks: Math.max(1, target - running) };
+        const val = Math.max(1, Math.round((Number(p.marks || 0) / Math.max(1, partSum)) * target));
+        running += val;
+        return { ...p, marks: val };
+      });
+      return { ...q, parts: scaled };
+    };
+
+    if (qSum === total) {
+      return bs.map((b: any) => (b?.type === 'question' ? fixParts(b) : b));
+    }
+
+    const factor = total / Math.max(1, qSum);
+    let running = 0;
+    const out = bs.map((b: any) => {
+      if (b?.type !== 'question') return b;
+      const q = { ...b };
+      if (questions[questions.length - 1] === b) {
+        q.marks = Math.max(1, total - running);
+      } else {
+        q.marks = Math.max(1, Math.round(Number(q.marks || 0) * factor));
+        running += q.marks;
+      }
+      return fixParts(q);
+    });
+    return out;
+  };
+
+  // generate fresh questions from template on mount
+  useEffect(() => {
+    let cancelled = false;
+    const go = async () => {
+      if (!Array.isArray(blocks) || blocks.length === 0) return;
+      try {
+        setGenLoading(true);
+        const res: any = await generateTestAI({
+          subject: (route.params as any)?.subject ?? 'Mathematics',
+          title: title ?? 'TEST',
+          difficulty: 'medium',
+          totalMarks,
+          blocks,
+          seed: Date.now(),                       // forces variation each time
+          grade: (route.params as any)?.grade ?? 12,
+          paper: (route.params as any)?.paper ?? 'Paper 1',
+        });
+
+        console.log('generateTestAI ->', res);
+        try {
+          console.log('generateTestAI raw:', JSON.stringify(res, null, 2));
+        } catch (_) {}
+
+        // ✅ NEW: if the function returns no blocks, fall back to the original blueprint
+        const apiBlocks = Array.isArray(res?.data?.blocks) ? res.data.blocks : [];
+        const aiBlocks = apiBlocks.length > 0 ? apiBlocks : blocks;
+
+        const ok =
+          !!(title ?? 'TEST') &&
+          Array.isArray(aiBlocks) &&
+          aiBlocks.length > 0 &&
+          typeof totalMarks === 'number' &&
+          totalMarks > 0;
+        console.log('schema ok?', ok);
+
+        const questions = aiBlocks.filter((b: any) => b?.type === 'question');
+        console.log(
+          'questions with parts?',
+          questions.every((q: any) => Array.isArray(q.parts) && q.parts.length > 0)
+        );
+
+        const sumQMarks = questions.reduce((a: number, q: any) => a + Number(q?.marks || 0), 0);
+        console.log('question marks sum vs total:', sumQMarks, 'vs', totalMarks, '->', sumQMarks === totalMarks);
+
+        const safe = reconcileMarks(aiBlocks, totalMarks);
+        if (!cancelled) setRunBlocks(safe);
+      } catch (e) {
+        console.log('generateTestAI error:', e);
+        if (!cancelled) setRunBlocks(reconcileMarks(blocks, totalMarks));
+      } finally {
+        if (!cancelled) setGenLoading(false);
+      }
+    };
+    go();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, totalMarks, JSON.stringify(blocks)]);
+
   // Start/stop the ticking based on paused/ended
   useEffect(() => {
     if (ended || paused) {
@@ -128,8 +236,10 @@ export default function TestRunnerScreen() {
   };
 
   // Small “answer area” box to mimic exam paper lines/space
-  const AnswerBox = ({ lines = 3 }: { lines?: number }) => (
-    <View style={[styles.answerBox, { height: 16 * lines + 20 }]} />
+  const AnswerBox = ({ lines = 3, prompt }: { lines?: number; prompt?: string }) => (
+    <View style={[styles.answerBox, { minHeight: 16 * lines + 20 }]}>
+      {prompt ? <Text style={styles.answerBoxText}>{prompt}</Text> : null}
+    </View>
   );
 
   // keys for answers/artifacts
@@ -160,11 +270,15 @@ export default function TestRunnerScreen() {
   // 🔒 SCROLL LOCK: if any pad is open, disable ScrollView scrolling
   const anyPadOpen = Object.values(openPads).some(Boolean);
 
-  // Plain renderer
+  // Plain renderer (uses runBlocks; shows tiny loading state)
   const Content = (
     <View style={styles.paperInner}>
-      {Array.isArray(blocks) && blocks.length > 0 ? (
-        blocks.map((b: Block, i: number) => {
+      {genLoading ? (
+        <View style={styles.placeholderBlock}>
+          <Text style={styles.placeholderText}>Generating a fresh version of this test…</Text>
+        </View>
+      ) : Array.isArray(runBlocks) && runBlocks.length > 0 ? (
+        runBlocks.map((b: Block, i: number) => {
           if ((b as any)?.type === 'section') {
             const sec = b as Extract<Block, { type: 'section' }>;
             return (
@@ -209,6 +323,7 @@ export default function TestRunnerScreen() {
                       const label = p.label ?? `(${String.fromCharCode(97 + j)})`;
                       const isMCQ = Array.isArray(p.options) && p.options.length > 0;
                       const open = !!openPads[key];
+                      const partText = p.text ?? (p as any).prompt;
 
                       return (
                         <View key={`q-${i}-p-${j}`} style={styles.partBlock}>
@@ -219,42 +334,52 @@ export default function TestRunnerScreen() {
                             ) : null}
                           </View>
 
-                          {p.text ? <Text style={styles.partText}>{p.text}</Text> : null}
-
-                          <AnswerBox lines={p.type === 'short' ? 2 : 4} />
-
+                          {/* For MCQ we still show the text above, for calc-type we show it inside the grey box */}
                           {isMCQ ? (
-                            <View style={styles.optRow}>
-                              {p.options!.map((opt) => (
-                                <Pressable
-                                  key={opt.id}
-                                  onPress={() => setAnswers((prev) => ({ ...prev, [key]: opt.id }))}
-                                  style={[
-                                    styles.optChip,
-                                    answers[key] === opt.id ? styles.optChipOn : styles.optChipOff,
-                                  ]}
-                                  hitSlop={6}
-                                >
-                                  <Text
+                            <>
+                              {partText ? <Text style={styles.partText}>{partText}</Text> : null}
+
+                              <AnswerBox lines={p.type === 'short' ? 2 : 4} />
+
+                              <View style={styles.optRow}>
+                                {p.options!.map((opt) => (
+                                  <Pressable
+                                    key={opt.id}
+                                    onPress={() => setAnswers((prev) => ({ ...prev, [key]: opt.id }))}
                                     style={[
-                                      styles.optChipText,
-                                      answers[key] === opt.id ? styles.optChipTextOn : styles.optChipTextOff,
+                                      styles.optChip,
+                                      answers[key] === opt.id ? styles.optChipOn : styles.optChipOff,
                                     ]}
+                                    hitSlop={6}
                                   >
-                                    {opt.text ?? opt.id}
-                                  </Text>
-                                </Pressable>
-                              ))}
-                            </View>
+                                    <Text
+                                      style={[
+                                        styles.optChipText,
+                                        answers[key] === opt.id ? styles.optChipTextOn : styles.optChipTextOff,
+                                      ]}
+                                    >
+                                      {opt.text ?? opt.id}
+                                    </Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+                            </>
                           ) : (
-                            <TextInput
-                              placeholder="Type your answer…  (or add handwritten working)"
-                              placeholderTextColor="rgba(229,231,235,0.7)"
-                              value={answers[key] ?? ''}
-                              onChangeText={(t) => setAnswers((prev) => ({ ...prev, [key]: t }))}
-                              style={styles.input}
-                              multiline
-                            />
+                            <>
+                              <AnswerBox
+                                lines={p.type === 'short' ? 2 : 4}
+                                prompt={partText}
+                              />
+
+                              <TextInput
+                                placeholder="Type your answer…  (or add handwritten working)"
+                                placeholderTextColor="rgba(251, 252, 253, 0.93)"
+                                value={answers[key] ?? ''}
+                                onChangeText={(t) => setAnswers((prev) => ({ ...prev, [key]: t }))}
+                                style={styles.input}
+                                multiline
+                              />
+                            </>
                           )}
 
                           <WorkingBtn targetKey={key} />
@@ -278,6 +403,7 @@ export default function TestRunnerScreen() {
                 ) : (
                   <View style={{ marginTop: 6 }}>
                     <AnswerBox lines={6} />
+
                     <TextInput
                       placeholder="Type your answer…  (or add handwritten working)"
                       placeholderTextColor="rgba(229,231,235,0.7)"
@@ -348,7 +474,7 @@ export default function TestRunnerScreen() {
       }));
 
       const res = await scoreTestAI({
-        questions: blocks,
+        questions: runBlocks, // send the exact questions shown
         answers: { items },
         working,
         rubric: { stepwise: true, methodMarks: true },
@@ -704,6 +830,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 8,
     backgroundColor: 'rgba(255,255,255,0.02)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
+  },
+  answerBoxText: {
+    color: '#F9FAFB',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 15,
   },
 
   // Input (text)

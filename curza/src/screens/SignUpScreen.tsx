@@ -61,10 +61,36 @@ export default function SignUpScreen() {
   ];
 
   // options for other pickers
-  const CURRICULA: Option[] = useMemo(() => toOptions(CURRICULUMS), []);
+  const CURRICULA: Option[] = useMemo(() => {
+  // Convert your array into Option objects
+  const base = toOptions(CURRICULUMS);
+
+  // This is the one that must be clickable & black
+  const CAPS_LABEL = "CAPS / NSC (National Senior Certificate)";
+  const CAPS_VALUE = "caps-nsc";
+
+  // Build new mapped list
+  const mapped = base.map((o) => {
+    const isCapsNSC = o.label === CAPS_LABEL;
+
+    return {
+      ...o,
+      value: isCapsNSC ? CAPS_VALUE : o.value,
+      disabled: !isCapsNSC, // only this one is clickable
+    };
+  });
+
+  // Move CAPS/NSC to the top so it displays first
+  const capsItem = mapped.find((o) => o.label === CAPS_LABEL);
+  const others = mapped.filter((o) => o.label !== CAPS_LABEL);
+
+  return capsItem ? [capsItem, ...others] : mapped;
+}, []);
+
+
   const GRADES: Option[] = useMemo(
-    () => Array.from({ length: 6 }, (_, i) => {
-      const g = 7 + i;
+    () => Array.from({ length: 5 }, (_, i) => {
+      const g = 8 + i;
       return { value: String(g), label: `Grade ${g}` } as Option;
     }),
     []
@@ -363,8 +389,8 @@ const s = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  activeTab: { color: '#E5E7EB', fontWeight: 'bold', marginTop: -62 },
-  inactiveTab: { color: '#E5E7EB', opacity: 0.8, marginTop: 37 },
+  activeTab: { color: 'white', fontWeight: 'bold', marginTop: -62 },
+  inactiveTab: { color: 'white', opacity: 0.8, marginTop: 37 },
 
   logintab: {
     position: 'absolute',
