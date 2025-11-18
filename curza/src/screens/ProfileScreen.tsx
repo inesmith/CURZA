@@ -13,6 +13,27 @@ import { db, auth } from '../../firebase';
 
 import { useNotice } from "../contexts/NoticeProvider";
 
+// 🔹 Same Select component as SignUp (modal dropdown)
+import Select, { Option } from "../ui/Select";
+
+// 🔹 Curriculum options, with only CAPS selectable
+const CURRICULA_OPTIONS: Option[] = [
+  { label: 'CAPS', value: 'CAPS', disabled: false },
+  { label: 'IEB', value: 'IEB', disabled: true },
+  { label: 'Cambridge', value: 'Cambridge', disabled: true },
+  { label: 'IB', value: 'IB', disabled: true },
+];
+
+const GRADE_OPTIONS: Option[] = Array.from({ length: 5 }, (_, index) => {
+  const g = 8 + index; // 8–12
+  return { label: `Grade ${g}`, value: String(g) };
+});
+
+const LANGUAGE_OPTIONS: Option[] = [
+  { label: 'English', value: 'English' },
+  { label: 'Afrikaans', value: 'Afrikaans' },
+];
+
 export default function ProfileScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { show } = useNotice();
@@ -40,10 +61,6 @@ export default function ProfileScreen() {
 
   // Logout confirm modal
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-
-  // Subjects selection modal
-  const [showSubjectsModal, setShowSubjectsModal] = useState(false);
-  const [tempSubjects, setTempSubjects] = useState<string[]>([]);
 
   // Helpers
   const normalizeCurriculum = (value: any): string => {
@@ -85,11 +102,10 @@ export default function ProfileScreen() {
     return core10to12;
   };
 
-  // Load user data (guard when user is null to avoid permission errors after logout)
+  // Load user data
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        // logged out — clear state and stop any reads
         userIdRef.current = null;
         setFullName('');
         setIdNumber('');
@@ -142,7 +158,6 @@ export default function ProfileScreen() {
     try {
       await signOut(auth);
       setShowLogoutModal(false);
-      // RootNav will switch to SignedOutStack (initialRouteName: SignUp)
     } catch (e) {
       console.log('Logout error:', e);
     }
@@ -179,7 +194,6 @@ export default function ProfileScreen() {
       setShowConfirmModal(false);
       show('Your account has been successfully deactivated.');
       await signOut(auth);
-      // RootNav takes user to SignUp stack automatically
     } catch (e) {
       setBusy(false);
       setShowConfirmModal(false);
@@ -201,7 +215,6 @@ export default function ProfileScreen() {
       setBusy(false);
       setShowConfirmModal(false);
       show('Your account has been successfully deleted.');
-      // auth.currentUser becomes null → RootNav shows SignedOutStack (SignUp)
     } catch (e) {
       setBusy(false);
       setShowConfirmModal(false);
@@ -261,23 +274,26 @@ export default function ProfileScreen() {
     }
   };
 
-  // ===== Subjects modal handlers =====
-  const openSubjectsModal = () => {
-    setTempSubjects(subjects);
-    setShowSubjectsModal(true);
-  };
+// 🔹 Build subject dropdown options
+const subjectOptions: Option[] = (() => {
+  const base = getSubjectOptions(curriculum, grade); // returns ['English', 'Afrikaans', 'Mathematics', ...]
+  const mathLabel = 'Mathematics';
 
-  const toggleTempSubject = (name: string) => {
-    setTempSubjects(prev =>
-      prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
-    );
-  };
+  return base.map((name) => {
+    const isMath =
+      name.toLowerCase() === 'mathematics' ||
+      name.trim().toLowerCase() === mathLabel.toLowerCase();
 
-  const applySubjectsModal = () => {
-    const cleaned = tempSubjects.map(titleCase).map(s => s.trim()).filter(Boolean);
-    setSubjects(cleaned);
-    setShowSubjectsModal(false);
-  };
+    return {
+      label: name,
+      value: isMath ? mathLabel : name, 
+      disabled: !isMath,               
+    } as Option;
+  });
+})();
+
+const selectedSubject = subjects[0] ?? null;
+
 
   return (
     <View style={s.page}>
@@ -407,41 +423,64 @@ export default function ProfileScreen() {
                       <View style={s.inputBox}><Text style={s.inputText}>{email || '—'}</Text></View>
                     )}
 
+                    {/* Curriculum with Select (only CAPS enabled) */}
                     <Text style={[s.label, { marginTop: 16 }]}>Curriculum</Text>
                     {editMode ? (
-                      <TextInput
-                        value={curriculum}
-                        onChangeText={(v) => setCurriculum(normalizeCurriculum(v))}
-                        style={s.inputBoxEditable}
-                        placeholder="CAPS / IEB / Cambridge / IB"
-                        placeholderTextColor="rgba(243,244,246,0.6)"
+                      <Select
+                        placeholder="Select your curriculum"
+                        value={curriculum || null}
+                        onChange={(val) => {
+                          if (val) setCurriculum(normalizeCurriculum(val));
+                        }}
+                        options={CURRICULA_OPTIONS}
+                        style={s.selectBox}
+                        textStyle={{
+                          color: '#F3F4F6',
+                          fontFamily: 'Antonio_700Bold',
+                          fontSize: 16,
+                        }}
                       />
                     ) : (
                       <View style={s.inputBox}><Text style={s.inputText}>{curriculum}</Text></View>
                     )}
 
+                    {/* Grade with Select */}
                     <Text style={[s.label, { marginTop: 16 }]}>Grade</Text>
                     {editMode ? (
-                      <TextInput
-                        value={String(grade)}
-                        onChangeText={(v) => setGrade(v)}
-                        style={s.inputBoxEditable}
-                        keyboardType="number-pad"
-                        placeholder="Grade"
-                        placeholderTextColor="rgba(243,244,246,0.6)"
+                      <Select
+                        placeholder="Select your grade"
+                        value={grade ? String(grade) : null}
+                        onChange={(val) => {
+                          if (val) setGrade(val);
+                        }}
+                        options={GRADE_OPTIONS}
+                        style={s.selectBox}
+                        textStyle={{
+                          color: '#F3F4F6',
+                          fontFamily: 'Antonio_700Bold',
+                          fontSize: 16,
+                        }}
                       />
                     ) : (
                       <View style={s.inputBox}><Text style={s.inputText}>{String(grade)}</Text></View>
                     )}
 
+                    {/* Language with Select */}
                     <Text style={[s.label, { marginTop: 16 }]}>Language</Text>
                     {editMode ? (
-                      <TextInput
-                        value={language}
-                        onChangeText={(v) => setLanguage(titleCase(v))}
-                        style={s.inputBoxEditable}
-                        placeholder="English / Afrikaans / isiZulu..."
-                        placeholderTextColor="rgba(243,244,246,0.6)"
+                      <Select
+                        placeholder="Select your language"
+                        value={language || null}
+                        onChange={(val) => {
+                          if (val) setLanguage(titleCase(val));
+                        }}
+                        options={LANGUAGE_OPTIONS}
+                        style={s.selectBox}
+                        textStyle={{
+                          color: '#F3F4F6',
+                          fontFamily: 'Antonio_700Bold',
+                          fontSize: 16,
+                        }}
                       />
                     ) : (
                       <View style={s.inputBox}><Text style={s.inputText}>{language}</Text></View>
@@ -452,11 +491,24 @@ export default function ProfileScreen() {
                   <View style={s.rightCol}>
                     <Text style={s.label}>Subjects Selected</Text>
                     {editMode ? (
-                      <Pressable onPress={openSubjectsModal} style={[s.inputBoxEditable, { height: 48, justifyContent: 'center' }]}>
-                        <Text style={s.inputText}>
-                          {subjects.length ? subjects.join(', ') : 'Select subjects'}
-                        </Text>
-                      </Pressable>
+                      <Select
+                        placeholder="Select subject"
+                        value={selectedSubject}
+                        onChange={(val) => {
+                          if (val) {
+                            setSubjects([val]);
+                          } else {
+                            setSubjects([]);
+                          }
+                        }}
+                        options={subjectOptions}
+                        style={s.selectBox}
+                        textStyle={{
+                          color: '#F3F4F6',
+                          fontFamily: 'Antonio_700Bold',
+                          fontSize: 16,
+                        }}
+                      />
                     ) : (
                       <View style={s.subjectsBox}>
                         {subjects.length > 0 ? (
@@ -475,7 +527,6 @@ export default function ProfileScreen() {
                           <Text style={s.deactivateText}>Delete / Deactivate Account</Text>
                         </Pressable>
 
-                        {/* Logout opens confirm modal */}
                         <Pressable style={s.logoutBtn} onPress={() => setShowLogoutModal(true)}>
                           <Text style={s.logoutText}>Log Out</Text>
                         </Pressable>
@@ -488,39 +539,6 @@ export default function ProfileScreen() {
           </View>
 
           {/* =====================  MODALS  ===================== */}
-
-          {/* Subjects multi-select */}
-          <Modal transparent visible={showSubjectsModal} animationType="fade" onRequestClose={() => setShowSubjectsModal(false)}>
-            <View style={s.modalBackdrop}>
-              <View style={s.modalSheet}>
-                <Text style={s.modalTitle}>Select your subjects</Text>
-                <Text style={s.modalText}>
-                  {Number(grade) >= 10 ? 'Choose your FET subjects (Gr 10–12)' : 'Choose your GET subjects (Gr 8–9)'}
-                </Text>
-
-                <ScrollView style={{ maxHeight: 360 }}>
-                  {getSubjectOptions(curriculum, grade).map(name => {
-                    const checked = tempSubjects.includes(name);
-                    return (
-                      <Pressable key={name} onPress={() => toggleTempSubject(name)} style={s.checkRow}>
-                        <View style={[s.checkbox, checked && s.checkboxOn]} />
-                        <Text style={s.checkText}>{name}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-
-                <View style={s.modalRow}>
-                  <Pressable style={[s.modalBtn, s.modalBtnSecondary]} onPress={() => setShowSubjectsModal(false)}>
-                    <Text style={s.modalBtnTextSecondary}>Cancel</Text>
-                  </Pressable>
-                  <Pressable style={[s.modalBtn, s.modalBtnPrimary]} onPress={applySubjectsModal}>
-                    <Text style={s.modalBtnText}>Apply</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
 
           {/* 1) Choose Delete or Deactivate */}
           <Modal transparent visible={showActionModal} animationType="fade" onRequestClose={() => setShowActionModal(false)}>
@@ -829,6 +847,22 @@ const s = StyleSheet.create({
     elevation: 3,
   },
 
+  // 🔹 Shared style for Select dropdowns in Profile (no blue)
+  selectBox: {
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#EAB308',
+    shadowColor: '#0B1220',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+
   subjectsBox: {
     minHeight: 133,
     borderRadius: 12,
@@ -957,7 +991,7 @@ const s = StyleSheet.create({
     fontSize: 16,
   },
 
-  // Checkbox row (subjects modal)
+  // Checkbox row (kept in case you reuse)
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',
