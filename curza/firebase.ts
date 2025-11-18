@@ -71,3 +71,6 @@ export async function getPaperListAI(params: ListCtx) {
   );
   return callable({ ...params, type: 'papers' });
 }
+
+export const generateResultFeedback = httpsCallable(functions, 'generateResultFeedback');
+export const exportResultPdf        = httpsCallable(functions, 'exportResultPdf');

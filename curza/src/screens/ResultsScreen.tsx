@@ -15,25 +15,84 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+} from 'firebase/firestore';
 import { db } from '../../firebase';
 
-type ResultRow = { id: string; paper: string; date: string; score: string; showArrow?: boolean };
+type ResultRow = {
+  id: string;
+  title?: string;
+  subject?: string;
+  paper?: string;
+  totalMarks?: number;
+  totalScore?: number;
+  percentage?: number | null;
+  createdAt?: any;
+  breakdown?: any[];
+  partialCredit?: any;
+  feedbackSummary?: string | null;
+  feedbackTips?: any[];
+};
 
-const SAMPLE_RESULTS: ResultRow[] = [
-  { id: 'r1', paper: 'MATHEMATICS P1', date: '22 SEPTEMBER 2025', score: '72%', showArrow: true },
-  { id: 'r2', paper: 'MATHEMATICS P1', date: '22 SEPTEMBER 2025', score: '60%', showArrow: true },
-  { id: 'r3', paper: 'MATHEMATICS P1', date: '22 SEPTEMBER 2025', score: '54%', showArrow: true },
+type Nav = StackNavigationProp<RootStackParamList>;
+
+const monthNames = [
+  'JANUARY',
+  'FEBRUARY',
+  'MARCH',
+  'APRIL',
+  'MAY',
+  'JUNE',
+  'JULY',
+  'AUGUST',
+  'SEPTEMBER',
+  'OCTOBER',
+  'NOVEMBER',
+  'DECEMBER',
 ];
 
+const formatDate = (raw: any): string => {
+  try {
+    if (!raw) return '—';
+    let d: Date;
+    if (typeof raw?.toDate === 'function') {
+      d = raw.toDate();
+    } else {
+      d = new Date(raw);
+    }
+    if (isNaN(d.getTime())) return '—';
+    const day = d.getDate();
+    const month = monthNames[d.getMonth()] ?? '';
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+  } catch {
+    return '—';
+  }
+};
+
+const deriveOutcome = (pct: number | null | undefined): string => {
+  if (pct == null || isNaN(pct)) return '—';
+  if (pct >= 80) return 'Distinction';
+  if (pct >= 60) return 'Good';
+  if (pct >= 40) return 'Needs Attention';
+  return 'At Risk';
+};
+
 export default function ResultsScreen() {
-  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<Nav>();
 
   const [curriculum, setCurriculum] = useState('CAPS');
   const [grade, setGrade] = useState<number | string>('12');
   const [subject, setSubject] = useState('Mathematics');
   const [showSubjectDrop, setShowSubjectDrop] = useState(false);
   const [subjects, setSubjects] = useState<string[]>([]);
+  const [results, setResults] = useState<ResultRow[]>([]);
 
   const normalizeCurriculum = (value: any): string => {
     const raw = String(value ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim();
@@ -55,9 +114,19 @@ export default function ResultsScreen() {
 
   useEffect(() => {
     const auth = getAuth();
+    let resultsUnsub: (() => void) | undefined;
+
     const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) return;
+      if (!user) {
+        setResults([]);
+        if (resultsUnsub) {
+          resultsUnsub();
+          resultsUnsub = undefined;
+        }
+        return;
+      }
       try {
+        // profile
         const snap = await getDoc(doc(db, 'users', user.uid));
         const profile = snap.exists() ? (snap.data() as any) : undefined;
 
@@ -75,11 +144,44 @@ export default function ResultsScreen() {
             setSubject(cleaned[0]);
           }
         }
+
+        // results
+        if (resultsUnsub) {
+          resultsUnsub();
+        }
+        const qRef = query(
+          collection(db, 'users', user.uid, 'results'),
+          orderBy('createdAt', 'desc'),
+        );
+        resultsUnsub = onSnapshot(qRef, (snapResults) => {
+          const rows: ResultRow[] = snapResults.docs.map((d) => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              title: data.title,
+              subject: data.subject,
+              paper: data.paper,
+              totalMarks: data.totalMarks,
+              totalScore: data.totalScore,
+              percentage: typeof data.percentage === 'number' ? data.percentage : null,
+              createdAt: data.createdAt,
+              breakdown: Array.isArray(data.breakdown) ? data.breakdown : [],
+              partialCredit: data.partialCredit ?? null,
+              feedbackSummary: data.feedbackSummary ?? null,
+              feedbackTips: Array.isArray(data.feedbackTips) ? data.feedbackTips : [],
+            };
+          });
+          setResults(rows);
+        });
       } catch {
         // keep defaults on error
       }
     });
-    return () => unsub();
+
+    return () => {
+      unsub();
+      if (resultsUnsub) resultsUnsub();
+    };
   }, []);
 
   return (
@@ -213,24 +315,64 @@ export default function ResultsScreen() {
                 contentContainerStyle={{ paddingBottom: 20, paddingRight: 6 }}
                 showsVerticalScrollIndicator
               >
-                {SAMPLE_RESULTS.map((r) => (
-                  <View key={r.id} style={s.resultRowWrap}>
-                    <Pressable
-                      style={s.resultRow}
-                      onPress={() => {
-                        navigation.navigate('ResultDetail', { result: r });
-                      }}
-                    >
-                      <Text style={s.resultPaper}>{r.paper}</Text>
-                      <Text style={s.sep}>·</Text>
-                      <Text style={s.resultDate}>{r.date}</Text>
-                      <Text style={s.sep}>·</Text>
-                      <Text style={s.resultScore}>{r.score}</Text>
-                    </Pressable>
+                {results.map((r) => {
+                  const paperName = (r.paper || r.title || 'Test').toUpperCase();
+                  const dateLabel = formatDate(r.createdAt);
+                  const pct =
+                    typeof r.percentage === 'number'
+                      ? r.percentage
+                      : r.totalMarks
+                      ? Math.round(((r.totalScore || 0) / r.totalMarks) * 100)
+                      : null;
+                  const scoreLabel =
+                    pct != null && !isNaN(pct)
+                      ? `${pct}%`
+                      : r.totalMarks
+                      ? `${r.totalScore ?? 0}/${r.totalMarks}`
+                      : '—';
 
-                    {r.showArrow && <View style={s.arrow} />}
+                  const outcome = deriveOutcome(pct);
+
+                  return (
+                    <View key={r.id} style={s.resultRowWrap}>
+                      <Pressable
+                        style={s.resultRow}
+                        onPress={() =>
+                          navigation.navigate('ResultDetail', {
+                            paper: paperName,
+                            date: dateLabel,
+                            score: scoreLabel,
+                            marksEarned: r.totalScore ?? 0,
+                            marksTotal: r.totalMarks ?? 0,
+                            outcome,
+                            breakdown: r.breakdown ?? [],
+                            partialCredit: r.partialCredit ?? null,
+                            feedbackSummary: r.feedbackSummary ?? null,
+                            tipsBlocks: r.feedbackTips ?? [],
+                          } as any)
+                        }
+                      >
+                        <Text style={s.resultPaper}>{paperName}</Text>
+                        <Text style={s.sep}>·</Text>
+                        <Text style={s.resultDate}>{dateLabel}</Text>
+                        <Text style={s.sep}>·</Text>
+                        <Text style={s.resultScore}>{scoreLabel}</Text>
+                      </Pressable>
+
+                      <View style={s.arrow} />
+                    </View>
+                  );
+                })}
+
+                {results.length === 0 && (
+                  <View style={s.resultRowWrap}>
+                    <View style={s.resultRow}>
+                      <Text style={s.resultPaper}>
+                        No tests marked yet. Write a practise test to see your results here.
+                      </Text>
+                    </View>
                   </View>
-                ))}
+                )}
               </ScrollView>
             </View>
           </View>
@@ -265,7 +407,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: '4.5%',
     alignItems: 'center',
-    zIndex: 20, // ensure labels are above decorative images
+    zIndex: 20,
   },
 
   posActive: { top: '15%' },

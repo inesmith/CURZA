@@ -453,7 +453,7 @@ export default function TestRunnerScreen() {
     </View>
   );
 
-  const handleSubmit = async () => {
+    const handleSubmit = async () => {
     if (submitting) return;
     try {
       setSubmitting(true);
@@ -488,6 +488,26 @@ export default function TestRunnerScreen() {
       });
 
       const result = res.data as any;
+
+      // Try to pull richer info out of the AI result, but keep everything optional
+      const breakdown = Array.isArray(result?.breakdown) ? result.breakdown : [];
+      const partialCredit = result?.partialCredit ?? null;
+
+      const feedbackSummary =
+        typeof result?.feedbackSummary === 'string'
+          ? result.feedbackSummary
+          : typeof result?.summary === 'string'
+          ? result.summary
+          : typeof result?.feedback?.summary === 'string'
+          ? result.feedback.summary
+          : null;
+
+      const feedbackTips: any[] =
+        Array.isArray(result?.feedback?.tips)
+          ? result.feedback.tips
+          : Array.isArray(result?.tips)
+          ? result.tips
+          : [];
 
       const auth = getAuth();
       const user = auth.currentUser;
@@ -543,28 +563,58 @@ export default function TestRunnerScreen() {
             ? Math.round((totalScore / totalMarks) * 100)
             : null;
 
-        const resultDoc = {
+        const resultDoc: any = {
           title: title || 'Test',
           subject: resSubject,
           paper: resPaper,
           totalMarks,
           totalScore,
           percentage,
-          breakdown: Array.isArray(result?.breakdown) ? result.breakdown : [],
+          breakdown,
+          partialCredit,
+          feedbackSummary,
+          feedbackTips,
           createdAt: serverTimestamp(),
         };
 
         const resRef = doc(collection(db, 'users', user.uid, 'results'));
         await setDoc(resRef, resultDoc);
-      }
 
-      navigation.navigate('ResultDetail', { result });
+        // Navigate straight to detail screen with all the info we have
+        navigation.navigate('ResultDetail', {
+          paper: resPaper || title || 'Test',
+          date: '', // will be formatted from Firestore on the list, here it's not critical
+          score:
+            percentage != null && !isNaN(percentage)
+              ? `${percentage}%`
+              : totalMarks > 0
+              ? `${totalScore}/${totalMarks}`
+              : '—',
+          marksEarned: totalScore,
+          marksTotal: totalMarks,
+          outcome:
+            percentage != null && !isNaN(percentage)
+              ? percentage >= 80
+                ? 'Distinction'
+                : percentage >= 60
+                ? 'Good'
+                : percentage >= 40
+                ? 'Needs Attention'
+                : 'At Risk'
+              : '—',
+          breakdown,
+          partialCredit,
+          feedbackSummary,
+          tipsBlocks: feedbackTips,
+        } as any);
+      }
     } catch (err) {
       console.log('scoreTest error:', err);
     } finally {
       setSubmitting(false);
     }
   };
+
 
   return (
     <View style={styles.page}>

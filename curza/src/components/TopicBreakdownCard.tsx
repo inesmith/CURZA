@@ -5,7 +5,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 type TopicItem = {
   label: string;
-  score: number;
+  score: number; // usually percentage 0–100
   color: string;
 };
 
@@ -20,6 +20,7 @@ export default function TopicBreakdownBlock({
     topics && topics.length
       ? topics
       : [
+          // fallback demo data if nothing is passed in
           { label: 'Algebra', score: 58, color: '#3B82F6' },
           { label: 'Functions', score: 76, color: '#FACC15' },
           { label: 'Financial Maths', score: 74, color: '#D1D5DB' },
@@ -27,8 +28,13 @@ export default function TopicBreakdownBlock({
           { label: 'Trigonometry', score: 81, color: '#F59E0B' },
         ];
 
+  const hasRealData = !!topics && topics.length > 0;
+
   const segments = useMemo(() => {
-    const total = Math.max(1, data.reduce((acc, t) => acc + Math.max(0, t.score), 0));
+    const total = Math.max(
+      1,
+      data.reduce((acc, t) => acc + Math.max(0, t.score), 0),
+    );
     return data.map((t) => ({
       key: t.label,
       value: Math.max(0, t.score),
@@ -39,7 +45,9 @@ export default function TopicBreakdownBlock({
 
   const avg =
     Math.round(
-      (data.reduce((a, t) => a + t.score, 0) / Math.max(1, data.length)) * 1
+      (data.reduce((a, t) => a + t.score, 0) /
+        Math.max(1, data.length)) *
+        1,
     ) || 0;
 
   const size = 160;
@@ -95,9 +103,21 @@ export default function TopicBreakdownBlock({
         </View>
 
         <View style={s.legendCol}>
-          {data.map((t) => (
-            <LegendRow key={t.label} color={t.color} label={t.label} value={t.score} />
-          ))}
+          {!hasRealData ? (
+            <Text style={s.emptyText}>
+              No topic breakdown available yet. Once AI finishes marking with
+              topics, you’ll see your marks per section here.
+            </Text>
+          ) : (
+            data.map((t) => (
+              <LegendRow
+                key={t.label}
+                color={t.color}
+                label={t.label}
+                value={t.score}
+              />
+            ))
+          )}
         </View>
       </View>
     </View>
@@ -117,7 +137,7 @@ function LegendRow({
     <View style={s.legendRow}>
       <View style={[s.dot, { backgroundColor: color }]} />
       <Text style={s.legendText}>{label}</Text>
-      <Text style={s.legendVal}>{value}</Text>
+      <Text style={s.legendVal}>{value}%</Text>
     </View>
   );
 }
@@ -192,5 +212,11 @@ const s = StyleSheet.create({
     fontFamily: 'Antonio_700Bold',
     fontSize: 15,
     marginLeft: 6,
+  },
+  emptyText: {
+    color: '#E5E7EB',
+    fontFamily: 'AlumniSans_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

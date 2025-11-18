@@ -20,7 +20,7 @@ import { summariseAI, createTestAI, listOptionsAI } from '../../firebase';
 
 // Firebase
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
 // Content
@@ -37,7 +37,6 @@ import {
   logChapterRevised,
 } from '../utils/progress';
 
-
 // AI chapters util (returns total + names)
 import { getChaptersMeta } from '../utils/chaptersMeta';
 
@@ -53,7 +52,6 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 
 export default function SummariesScreen() {
-  const [showDrop, setShowDrop] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   // 🔵 Top-right blocks state
@@ -76,7 +74,9 @@ export default function SummariesScreen() {
   // per-chapter topics
   const [topics, setTopics] = useState<TopicSection[]>([]);
   const topicsRef = useRef<TopicSection[]>([]);
-  useEffect(() => { topicsRef.current = topics; }, [topics]);
+  useEffect(() => {
+    topicsRef.current = topics;
+  }, [topics]);
 
   // examples loading
   const [examplesLoading, setExamplesLoading] = useState(false);
@@ -111,11 +111,7 @@ export default function SummariesScreen() {
       .replace(/^chapter\s*\d+\s*[:\-–]\s*/i, '')
       .trim();
 
-  const normalizeTopicTitle = (
-    raw: any,
-    idx: number,
-    chapName?: string
-  ): string => {
+  const normalizeTopicTitle = (raw: any, idx: number, chapName?: string): string => {
     let t = stripChapterPrefixFromTitle(raw);
 
     // if the "topic" is literally just the chapter name, fall back to Topic X
@@ -139,7 +135,10 @@ export default function SummariesScreen() {
     const out: string[] = [];
     for (const t of arr) {
       const k = String(t ?? '').trim().toLowerCase();
-      if (k && !seen.has(k)) { seen.add(k); out.push(String(t)); }
+      if (k && !seen.has(k)) {
+        seen.add(k);
+        out.push(String(t));
+      }
     }
     return out;
   };
@@ -347,19 +346,18 @@ export default function SummariesScreen() {
       setTopics(normalized);
 
       // progress tick + recent activity
-try {
-  await incSummariesStudied();
-  await logSummaryStudied({
-    curriculum,
-    grade,
-    subject: subject || 'Mathematics',
-    chapter: chapNum,
-    chapterName: chapName,
-  });
-} catch (e) {
-  console.log('summary studied logging failed:', e);
-}
-
+      try {
+        await incSummariesStudied();
+        await logSummaryStudied({
+          curriculum,
+          grade,
+          subject: subject || 'Mathematics',
+          chapter: chapNum,
+          chapterName: chapName,
+        });
+      } catch (e) {
+        console.log('summary studied logging failed:', e);
+      }
     } catch (e) {
       console.log('onSelectChapter failed — using fallback topics:', e);
       const fallback = defaultTopicsForChapter();
@@ -409,7 +407,9 @@ try {
               [];
 
             incoming = (Array.isArray(rawArr) ? rawArr : [])
-              .map((x) => typeof x === 'string' ? x : (x?.text ?? x?.step ?? x?.title ?? ''))
+              .map((x) =>
+                typeof x === 'string' ? x : (x?.text ?? x?.step ?? x?.title ?? '')
+              )
               .map((s) => stripLead(String(s)))
               .filter(Boolean)
               .filter((s) => s.length <= 200);
@@ -423,7 +423,9 @@ try {
           if (!incoming || incoming.length === 0) return;
 
           // Merge into a new topics array once after all promises complete
-          const before = Array.isArray(current[idx]?.exampleSteps) ? current[idx].exampleSteps : [];
+          const before = Array.isArray(current[idx]?.exampleSteps)
+            ? current[idx].exampleSteps
+            : [];
           const merged = dedupe([...before, ...incoming]).slice(0, 10);
           if (merged.length > before.length) {
             anyUpdated = true;
@@ -453,7 +455,7 @@ try {
     String(s ?? '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+      .replace(/>/g, '&gt;/g');
 
   const makePdfName = () => {
     const subj = (subject || 'Subject').replace(/[^a-z0-9]+/gi, '_');
@@ -614,10 +616,6 @@ try {
           <Image source={require('../../assets/ProfileTab.png')} style={s.tab} resizeMode="contain" />
         </View>
 
-        {showDrop && (
-          <Image source={require('../../assets/SummariesDropTab.png')} style={s.dropTab} resizeMode="contain" />
-        )}
-
         {/* Dashboard rail label (moved higher) */}
         <View style={[s.tabTextWrapper, s.posActive]}>
           <Pressable
@@ -631,12 +629,12 @@ try {
         {/* Clickable rail labels */}
         <View style={[s.tabTextWrapper, s.posSummaries]}>
           <Pressable
-            onPress={() => setShowDrop((v) => !v)}
+            onPress={() => {}}
             onLongPress={handleSummarize}
             delayLongPress={300}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={[s.tabText, showDrop ? s.summariesActive : s.summariesTab]}>SUMMARIES</Text>
+            <Text style={[s.tabText, s.summariesTab]}>SUMMARIES</Text>
           </Pressable>
         </View>
 
@@ -652,13 +650,19 @@ try {
         </View>
 
         <View style={[s.tabTextWrapper, s.posResults]}>
-          <Pressable onPress={() => navigation.navigate('Results')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Pressable
+            onPress={() => navigation.navigate('Results')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
             <Text style={[s.tabText, s.resultsTab]}>RESULTS</Text>
           </Pressable>
         </View>
 
         <View style={[s.tabTextWrapper, s.posProfile]}>
-          <Pressable onPress={() => navigation.navigate('ProfileSettings')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Pressable
+            onPress={() => navigation.navigate('ProfileSettings')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
             <Text style={[s.tabText, s.profileTab]}>PROFILE & SETTINGS</Text>
           </Pressable>
         </View>
@@ -675,7 +679,6 @@ try {
           imageStyle={s.cardImage}
           resizeMode="cover"
         >
-
           {/* 🔵 TOP-RIGHT BLUE BLOCKS */}
           <View style={s.topRightWrap}>
             <View style={s.row}>
@@ -718,7 +721,12 @@ try {
                     setShowChapterDrop(true);
                   }}
                   hitSlop={6}
-                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: subject ? 1 : 0.5 }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    opacity: subject ? 1 : 0.5,
+                  }}
                 >
                   <View style={{ flexShrink: 1, minWidth: 0 }}>
                     <Text style={s.pillTop}>CHAPTER</Text>
@@ -770,7 +778,10 @@ try {
                 <View style={s.ddSheet}>
                   <Text style={s.ddTitle}>Select Chapter</Text>
                   <ScrollView style={{ maxHeight: 340 }}>
-                    {(chapterOptions.length ? chapterOptions : ['1','2','3','4','5','6','7','8','9','10']).map((n) => (
+                    {(chapterOptions.length
+                      ? chapterOptions
+                      : ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
+                    ).map((n) => (
                       <Pressable
                         key={n}
                         style={s.ddRow}
@@ -825,38 +836,37 @@ try {
                   </Pressable>
 
                   <Pressable
-  style={s.yellowBtn}
-  onPress={async () => {
-    if (!subject || chapter === '-') {
-      show('Choose a subject and chapter first.', 'error');
-      return;
-    }
+                    style={s.yellowBtn}
+                    onPress={async () => {
+                      if (!subject || chapter === '-') {
+                        show('Choose a subject and chapter first.', 'error');
+                        return;
+                      }
 
-    const chapKey = String(chapter);
-    const chapName =
-      chapterNames[chapKey] ??
-      chapterNames[Number(chapKey) as any] ??
-      '';
+                      const chapKey = String(chapter);
+                      const chapName =
+                        chapterNames[chapKey] ??
+                        chapterNames[Number(chapKey) as any] ??
+                        '';
 
-    try {
-      await incChaptersCovered();
-      await logChapterRevised({
-        curriculum,
-        grade,
-        subject,
-        chapter: chapKey,
-        chapterName: chapName,
-      });
-      show('Chapter marked as revised. Progress updated.', 'success');
-    } catch (e) {
-      console.log('chapter revised logging failed:', e);
-      show('Could not update progress right now.', 'error');
-    }
-  }}
->
-  <Text style={s.yellowBtnText}>Mark Chapter as Revised</Text>
-</Pressable>
-
+                      try {
+                        await incChaptersCovered();
+                        await logChapterRevised({
+                          curriculum,
+                          grade,
+                          subject,
+                          chapter: chapKey,
+                          chapterName: chapName,
+                        });
+                        show('Chapter marked as revised. Progress updated.', 'success');
+                      } catch (e) {
+                        console.log('chapter revised logging failed:', e);
+                        show('Could not update progress right now.', 'error');
+                      }
+                    }}
+                  >
+                    <Text style={s.yellowBtnText}>Mark Chapter as Revised</Text>
+                  </Pressable>
                 </View>
 
                 {/* Render Topic 1..N */}
@@ -871,24 +881,40 @@ try {
 
                     <View style={s.contentRow}>
                       <View style={s.leftCol}>
-                        <KeyConceptsCard
-                          title="KEY CONCEPTS"
-                          concepts={Array.isArray((t as any)?.keyConcepts) ? (t as any).keyConcepts : []}
-                        />
-                        <ExampleSection
-                          exampleTitle="EXAMPLES"
-                          exampleSteps={Array.isArray((t as any)?.exampleSteps) ? (t as any).exampleSteps : []}
-                        />
-                      </View>
+                          <KeyConceptsCard
+                            title="KEY CONCEPTS"
+                            blocks={
+                              Array.isArray((t as any)?.keyConcepts)
+                                ? ((t as any).keyConcepts as any)
+                                : []
+                            }
+                          />
+                          <ExampleSection
+                            exampleTitle="EXAMPLES"
+                            exampleSteps={
+                              Array.isArray((t as any)?.exampleSteps)
+                                ? (t as any).exampleSteps
+                                : []
+                            }
+                          />
+                        </View>
 
                       <View style={s.rightCol}>
                         <FormulasCard
                           title="FORMULAS"
-                          formulas={Array.isArray((t as any)?.formulas) ? (t as any).formulas : []}
+                          formulas={
+                            Array.isArray((t as any)?.formulas)
+                              ? (t as any).formulas
+                              : []
+                          }
                         />
                         <TipBoxCard
                           title="TIP BOX"
-                          tips={Array.isArray((t as any)?.tips) ? (t as any).tips : []}
+                          tips={
+                            Array.isArray((t as any)?.tips)
+                              ? (t as any).tips
+                              : []
+                          }
                         />
                       </View>
                     </View>
@@ -954,7 +980,7 @@ const s = StyleSheet.create({
   },
   dashboardTab: { fontWeight: 'bold', marginTop: -45 },
   summariesTab: { opacity: 0.9, marginTop: -15 },
-  summariesActive: { opacity: 1, marginTop: -15, fontWeight: '800', color: '#FACC15' },
+  summariesActive: { opacity: 1, marginTop: -15, fontWeight: '800', color: '#FACC15' }, // no longer used but kept
   practiseTab: { opacity: 0.8, marginTop: 20 },
   resultsTab: { opacity: 0.8, marginTop: 45 },
   profileTab: { opacity: 0.8, marginTop: 72 },
@@ -1022,7 +1048,7 @@ const s = StyleSheet.create({
   subjectTextWrap: {
     flexShrink: 1,
     minWidth: 0,
-    alignSelf: 'stretch'
+    alignSelf: 'stretch',
   },
 
   chapterPill: {

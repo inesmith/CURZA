@@ -16,21 +16,35 @@ export default function PartialCreditCard({
   summary?: string;
   items?: string[];
 }) {
+  const numericMarks =
+    typeof marks === 'number' ? marks : Number(marks) || 0;
+  const hasPartial = numericMarks > 0 && items && items.length > 0;
+
+  const displayTitle = hasPartial ? title : 'NO PARTIAL CREDIT THIS TIME';
+  const displayMarks = hasPartial ? `${String(marks)} MARKS` : '0 MARKS';
+  const displaySummary = hasPartial
+    ? summary
+    : 'No partial credit was awarded in this test. Next time, show every step clearly so AI can still give you marks even if the final answer is wrong.';
+  const displayItems =
+    hasPartial && items.length > 0
+      ? items
+      : ['No specific partial-credit moments were recorded.'];
+
   return (
     <View style={s.wrap}>
-      <Text style={s.title}>{title}</Text>
+      <Text style={s.title}>{displayTitle}</Text>
 
       <View style={s.marksPill}>
-        <Text style={s.marksText}>{String(marks)} MARKS</Text>
+        <Text style={s.marksText}>{displayMarks}</Text>
       </View>
 
       <View style={s.noteBox}>
-        <Text style={s.noteText}>{summary}</Text>
+        <Text style={s.noteText}>{displaySummary}</Text>
       </View>
 
       <View style={s.detailBox}>
-        {items.map((line, i) => (
-          <Text key={`${i}-${line.slice(0,10)}`} style={s.detailText}>
+        {displayItems.map((line, i) => (
+          <Text key={`${i}-${line.slice(0, 10)}`} style={s.detailText}>
             {line}
           </Text>
         ))}
