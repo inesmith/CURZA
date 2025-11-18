@@ -99,6 +99,36 @@ export default function SummariesScreen() {
 
   const stripLead = (s: string) => String(s ?? '').replace(/^[•\-\d\.\)\s]+/, '').trim();
 
+    const stripChapterPrefixFromTitle = (s: any): string =>
+    String(s ?? '')
+      // remove things like "Chapter 1: " / "CHAPTER 3 - "
+      .replace(/^chapter\s*\d+\s*[:\-–]\s*/i, '')
+      .trim();
+
+  const normalizeTopicTitle = (
+    raw: any,
+    idx: number,
+    chapName?: string
+  ): string => {
+    let t = stripChapterPrefixFromTitle(raw);
+
+    // if the "topic" is literally just the chapter name, fall back to Topic X
+    if (
+      chapName &&
+      t &&
+      t.toLowerCase() === String(chapName).trim().toLowerCase()
+    ) {
+      return `Topic ${idx + 1}`;
+    }
+
+    if (!t) {
+      return `Topic ${idx + 1}`;
+    }
+
+    return t;
+  };
+
+
   const dedupe = (arr: string[]) => {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -279,20 +309,30 @@ export default function SummariesScreen() {
         t = [];
       }
 
-      // Normalize to ensure each topic has a `.title`
-      let normalized: TopicSection[] = (Array.isArray(t) ? t : []).map((x: any, i: number) => {
-        const title =
-          typeof x === 'string'
-            ? x
-            : x?.title ?? x?.name ?? x?.topic ?? x?.heading ?? `Topic ${i + 1}`;
-        return {
-          title,
-          keyConcepts: Array.isArray(x?.keyConcepts) ? x.keyConcepts : [],
-          exampleSteps: Array.isArray(x?.exampleSteps) ? x.exampleSteps : [],
-          formulas: Array.isArray(x?.formulas) ? x.formulas : [],
-          tips: Array.isArray(x?.tips) ? x.tips : [],
-        } as TopicSection;
-      });
+            // Normalize to ensure each topic has a clean `.title`
+      let normalized: TopicSection[] = (Array.isArray(t) ? t : []).map(
+        (x: any, i: number) => {
+          const rawTitle =
+            typeof x === 'string'
+              ? x
+              : x?.title ?? x?.name ?? x?.topic ?? x?.heading ?? '';
+
+          const title = normalizeTopicTitle(
+            rawTitle,
+            i,
+            chapName // the chapter name we resolved above
+          );
+
+          return {
+            title,
+            keyConcepts: Array.isArray(x?.keyConcepts) ? x.keyConcepts : [],
+            exampleSteps: Array.isArray(x?.exampleSteps) ? x.exampleSteps : [],
+            formulas: Array.isArray(x?.formulas) ? x.formulas : [],
+            tips: Array.isArray(x?.tips) ? x.tips : [],
+          } as TopicSection;
+        }
+      );
+
 
       // Fallback if nothing came back
       if (!normalized.length) {

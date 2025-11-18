@@ -1,104 +1,109 @@
 // functions/src/index.ts
-import * as functions from 'firebase-functions';
-import { onCall } from 'firebase-functions/v2/https';
-
-// ------------------------------------------------------
-// SIMPLE STUBS (you can replace later if you want)
-// ------------------------------------------------------
-export const summarise = onCall({ region: 'us-central1' }, async (req) => {
-  return { ok: true, summary: 'stub' };
-});
-
-export const scoreTest = onCall({ region: 'us-central1' }, async (req) => {
-  return { ok: true, score: 0 };
-});
+import * as functions from "firebase-functions";
+import { onCall } from "firebase-functions/v2/https";
 
 // ------------------------------------------------------
 // REAL TEST BUILDERS (from separate files)
 // ------------------------------------------------------
+export { buildTest } from "./buildTest";
+export { generateTestAI } from "./generateTestAI";
 
-// ✅ Use the fully implemented buildTest from buildTest.ts
-export { buildTest } from './buildTest';
+// ------------------------------------------------------
+// CHAPTERS + TOPICS META
+// ------------------------------------------------------
+export { chaptersMeta } from "./chaptersMeta";
+export { chapterTopics } from "./chapterTopics";
 
-// ✅ Use the OpenAI-based generator from generateTestAI.ts
-export { generateTestAI } from './generateTestAI';
+// ------------------------------------------------------
+// TOPIC SUMMARIES (AI)
+// ------------------------------------------------------
+export { summarise } from "./summarise";
+
+// ------------------------------------------------------
+// SIMPLE STUBS YOU STILL HAVE
+// ------------------------------------------------------
+export const scoreTest = onCall({ region: "us-central1" }, async (req) => {
+  return { ok: true, score: 0 };
+});
 
 // ------------------------------------------------------
 // listOptionsAI (keep this here for topics/papers)
 // ------------------------------------------------------
 
-// Types for listOptionsAI
 type ListReq = {
-  type: 'topics' | 'papers';
+  type: "topics" | "papers";
   curriculum?: string;
   grade?: number | string;
   subject?: string;
 };
 
 const norm = (s?: any) =>
-  String(s ?? '')
+  String(s ?? "")
     .trim()
     .toLowerCase();
 
 function capsMathTopics(grade: number): string[] {
   if (grade <= 9) {
     return [
-      'Numbers, Operations & Relationships',
-      'Patterns & Algebra',
-      'Functions & Graphs',
-      'Space & Shape (Geometry)',
-      'Measurement',
-      'Data Handling & Probability',
+      "Numbers, Operations & Relationships",
+      "Patterns & Algebra",
+      "Functions & Graphs",
+      "Space & Shape (Geometry)",
+      "Measurement",
+      "Data Handling & Probability",
     ];
   }
   return [
-    'Algebra',
-    'Functions & Graphs',
-    'Trigonometry',
-    'Analytical Geometry',
-    'Euclidean Geometry',
-    'Probability',
-    'Financial Mathematics',
-    'Differential Calculus',
-    'Integral Calculus',
-    'Sequences & Series',
+    "Algebra",
+    "Functions & Graphs",
+    "Trigonometry",
+    "Analytical Geometry",
+    "Euclidean Geometry",
+    "Probability",
+    "Financial Mathematics",
+    "Differential Calculus",
+    "Integral Calculus",
+    "Sequences & Series",
   ];
 }
 
 function capsMathPapers(grade: number): string[] {
-  if (grade >= 10) return ['Paper 1', 'Paper 2'];
-  return ['Term Test'];
+  if (grade >= 10) return ["Paper 1", "Paper 2"];
+  return ["Term Test"];
 }
 
-export const listOptionsAI = onCall<ListReq>({ region: 'us-central1' }, async (req) => {
-  const { type } = req.data || {};
-  if (type !== 'topics' && type !== 'papers') {
-    throw new functions.https.HttpsError(
-      'invalid-argument',
-      "Expected 'type' to be 'topics' or 'papers'."
-    );
-  }
-
-  const curriculum = norm(req.data?.curriculum) || 'caps';
-  const subject = norm(req.data?.subject) || 'mathematics';
-  let gnum = Number(req.data?.grade ?? 12);
-  if (!Number.isFinite(gnum)) gnum = 12;
-
-  if (subject !== 'mathematics') {
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'Only Mathematics is supported at this time.'
-    );
-  }
-
-  if (curriculum === 'caps') {
-    if (type === 'topics') {
-      return { topics: capsMathTopics(gnum) };
-    } else {
-      return { papers: capsMathPapers(gnum) };
+export const listOptionsAI = onCall<ListReq>(
+  { region: "us-central1" },
+  async (req) => {
+    const { type } = req.data || {};
+    if (type !== "topics" && type !== "papers") {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Expected 'type' to be 'topics' or 'papers'."
+      );
     }
-  }
 
-  if (type === 'topics') return { topics: capsMathTopics(gnum) };
-  return { papers: capsMathPapers(gnum) };
-});
+    const curriculum = norm(req.data?.curriculum) || "caps";
+    const subject = norm(req.data?.subject) || "mathematics";
+    let gnum = Number(req.data?.grade ?? 12);
+    if (!Number.isFinite(gnum)) gnum = 12;
+
+    if (subject !== "mathematics") {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Only Mathematics is supported at this time."
+      );
+    }
+
+    if (curriculum === "caps") {
+      if (type === "topics") {
+        return { topics: capsMathTopics(gnum) };
+      } else {
+        return { papers: capsMathPapers(gnum) };
+      }
+    }
+
+    if (type === "topics") return { topics: capsMathTopics(gnum) };
+    return { papers: capsMathPapers(gnum) };
+  }
+);
